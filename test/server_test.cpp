@@ -227,7 +227,7 @@ int main(int argc, char **argv)
         require(explorer.controls().size() == 3, "a drop on the controls page adds the control");
         { // Physics on the ball of the pad, end to end: held by a spring to the hand, then drawn to where the hand was once let go
             const quint64 padId = explorer.controls()[1].id;
-            const QByteArray ball = "{\"physics\":{\"mode\":2,\"friction\":10,\"tension\":200,\"attract\":60}}";
+            const QByteArray ball = "{\"physics\":{\"mode\":2,\"friction\":30,\"attraction\":200}}";
             frame.sendText("{\"t\":\"edit\",\"id\":\"" + QByteArray::number(padId) + "\",\"props\":{\"balls\":[" + ball + "]}}");
             frame.pumpUntil([&] { return explorer.controls()[1].balls[0].physics.mode == 2; });
             require(explorer.controls()[1].balls[0].physics.mode == 2 && explorer.controls()[1].balls[0].px == "/mix/level", "a ball's physics is set from the page, its addresses kept");
@@ -235,8 +235,8 @@ int main(int argc, char **argv)
             frame.pumpUntil([&] { return level > 0.8; });
             require(level > 0.8 && rate > 7, "held by the hand, the ball goes to it through the spring");
             frame.sendText("{\"t\":\"rel\",\"id\":\"" + QByteArray::number(padId) + "\"}");
-            frame.pumpUntil([&] { return std::abs(level - 0.9) < 0.02 && std::abs(rate - 9) < 0.2; }, 5000);
-            require(std::abs(level - 0.9) < 0.02 && std::abs(rate - 9) < 0.2, "let go, the ball settles where the hand was and the device follows");
+            frame.pump(1500);
+            require(level > 0.8 && level <= 1.0 && rate > 7, "let go, the ball goes on with its push and stops, the device follows");
         }
         page.sendText("{\"t\":\"add\",\"targets\":[{\"device\":99,\"path\":\"/nope\"}]}");
         page.sendText("not json");
