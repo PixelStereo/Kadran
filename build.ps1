@@ -128,4 +128,9 @@ $deployArgs = @(if ($Type -eq "Debug") { "--debug" } else { "--release" }) + @("
 $exe = Join-Path $PSScriptRoot "build\${appName}.exe"
 if (-not (Test-Path $exe)) { Fail "build\${appName}.exe was not built" }
 Write-Host "`nKadran is built: $exe" -ForegroundColor Green
+if ($Run) {
+    # A Kadran that is already running answers for the new one: closed first, so that this version is the one that opens
+    $old = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "Kadran *" }
+    if ($old) { Step "Closing the Kadran that is running"; $old | Stop-Process -Force; Start-Sleep -Seconds 1 }
+}
 if ($Run) { Start-Process $exe -WorkingDirectory (Join-Path $PSScriptRoot "build") }

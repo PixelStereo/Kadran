@@ -105,6 +105,12 @@ if [[ $TESTS == ON ]]; then
 fi
 
 # --- Open
+# A Kadran that is already running answers for the new one (one at a time): the old version would be what opens. It is closed first
+if [[ $RUN == 1 ]] && pgrep -f "/Kadran [0-9]" >/dev/null 2>&1; then
+  step "Closing the Kadran that is running (the page is kept: it is saved as it goes)"
+  pkill -f "/Kadran [0-9]" || true
+  sleep 1
+fi
 APP_NAME=$(python3 -c 'import json; print(json.load(open("build/application.json"))["name"])' 2>/dev/null || sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' build/application.json | head -1)
 [[ -n $APP_NAME ]] || fail "build/application.json has no application name"
 if [[ $OS == Darwin ]]; then
