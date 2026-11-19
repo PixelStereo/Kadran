@@ -31,6 +31,7 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this)
     m_retry.setInterval(5000); // a device the page shows that is not answering is tried again
     connect(&m_retry, &QTimer::timeout, this, &Explorer::retry);
     m_retry.start();
+    setPrefs({}); // the defaults, until the saved preferences are read
     m_server = new controls::Server(this, this);
     m_server->setName(QStringLiteral("Kadran"));
     m_server->setPageTitle(QStringLiteral("Kadran"));
@@ -206,9 +207,22 @@ QJsonObject Explorer::prefsOptions()
     return QJsonObject{{"types", types}, {"sizeWidgets", QJsonArray::fromStringList(kSizeWidgets)}};
 }
 
+// What a new control is by default: the smallest, the page's own minimum for its widget (a view 1 × 1, a vertical fader 1 × 3,
+// a knob or a pad 2 × 2, the others 2 × 1), and a number a horizontal slim fader. What the preferences leave out is this.
+static QJsonArray smallest(const QString &widget)
+{
+    if (widget == QLatin1String("vfader") || widget == QLatin1String("vslim")) return {1, 3};
+    if (widget == QLatin1String("knob") || widget == QLatin1String("pad")) return {2, 2};
+    if (widget == QLatin1String("meter") || widget == QLatin1String("hmeter") || widget == QLatin1String("readout") || widget == QLatin1String("graph") ||
+        widget == QLatin1String("led"))
+        return {1, 1};
+    return {2, 1};
+}
+
 void Explorer::setPrefs(const QJsonObject &prefs)
 {
-    QJsonObject widgets, sizes;
+    QJsonObject widgets{{"float", "slim"}, {"int", "slim"}}, sizes;
+    for (const QString &k : kSizeWidgets) sizes.insert(k, smallest(k));
     const QJsonObject w = prefs.value("widgets").toObject();
     for (const auto &t : kTypeWidgets)
         if (const QString v = w.value(QLatin1String(t.first)).toString(); t.second.contains(v)) widgets.insert(QLatin1String(t.first), v);
