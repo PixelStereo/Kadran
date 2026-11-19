@@ -12,14 +12,20 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QEventLoop>
 #include <QLabel>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
+#include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <cstdio>
+#include <cstring>
 
 namespace {
 constexpr quint16 kDefaultPort = 47800; // a stable address: a bookmark, a tablet
@@ -42,10 +48,38 @@ void loadInterface(Explorer &ex)
     if (!f.open(QIODevice::ReadOnly)) return;
     ex.fromJson(QJsonDocument::fromJson(f.read(32 << 20)).object());
 }
+// --check: the server starts and serves its two pages. For the package to be tried before it is published
+int selfTest()
+{
+    Explorer explorer;
+    KadranServer server(&explorer);
+    if (!server.start(0, QString(), QStringLiteral("127.0.0.1"))) return 2;
+    QNetworkAccessManager net;
+    int answered = 0, ok = 0;
+    QEventLoop loop;
+    for (const char *path : {"/", "/control"}) {
+        QNetworkReply *reply = net.get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1%2").arg(server.port()).arg(QLatin1String(path)))));
+        QObject::connect(reply, &QNetworkReply::finished, [&, reply, path] {
+            const QByteArray body = reply->readAll();
+            if (reply->error() == QNetworkReply::NoError && body.contains(path[1] ? "Controls" : "Kadran")) ++ok;
+            reply->deleteLater();
+            if (++answered == 2) loop.quit();
+        });
+    }
+    QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+    loop.exec();
+    std::puts(ok == 2 ? "Kadran: ok" : "Kadran: the server did not serve its pages");
+    return ok == 2 ? 0 : 1;
+}
 } // namespace
 
 int main(int argc, char **argv)
 {
+    for (int i = 1; i < argc; ++i)
+        if (std::strcmp(argv[i], "--check") == 0) { // what CI runs on the package: no window, no display needed
+            QCoreApplication core(argc, argv);
+            return selfTest();
+        }
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Kadran"));
     app.setOrganizationName(QStringLiteral("Pixel Stereo"));

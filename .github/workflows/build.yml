@@ -1,0 +1,179 @@
+name: Build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            qt: 6.8.3
+          - os: windows-latest
+            qt: 6.8.3
+          # Qt 6.8 links the AGL framework, gone from the macOS 26 SDK of the runner
+          - os: macos-latest
+            qt: 6.10.3
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          cache: true
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release --parallel 3
+      - run: ctest --test-dir build -C Release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  package-macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.10.3
+          cache: true
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_TESTS=OFF
+      - run: cmake --build build --parallel 3
+      - name: Package and try it
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tag=dev
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; fi
+          archive="$PWD/dist/Kadran-macos-${{ matrix.arch }}-$tag.zip"
+          app_name=$(python3 -c 'import json; print(json.load(open("build/application.json"))["name"])')
+          file "build/$app_name.app/Contents/MacOS/$app_name"
+          cp LICENSE "build/$app_name.app/Contents/Resources/LICENSE.txt" 2>/dev/null || { mkdir -p "build/$app_name.app/Contents/Resources"; cp LICENSE "build/$app_name.app/Contents/Resources/LICENSE.txt"; }
+          bash third_party/pxs/scripts/package-macos.sh build/application.json build "$archive"
+          # The zip, not the folder: extracted, verified, started
+          rm -rf "$RUNNER_TEMP/smoke" && mkdir -p "$RUNNER_TEMP/smoke"
+          ditto -x -k "$archive" "$RUNNER_TEMP/smoke"
+          codesign --verify --deep --strict "$RUNNER_TEMP/smoke/$app_name.app"
+          PATH=/usr/bin:/bin "$RUNNER_TEMP/smoke/$app_name.app/Contents/MacOS/$app_name" --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kadran-macos-${{ matrix.arch }}
+          path: dist/Kadran-macos-*.zip
+          if-no-files-found: error
+
+  package-windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_TESTS=OFF
+      - run: cmake --build build --config Release --parallel 3
+      - name: Package and try it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Get-Content build/application.json -Raw | ConvertFrom-Json
+          $appName = $app.name
+          $tag = 'dev'
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $tag = $env:GITHUB_REF_NAME }
+          New-Item -ItemType Directory -Path dist/package -Force | Out-Null
+          $exe = Get-ChildItem build -Recurse -Filter "$appName.exe" | Select-Object -First 1
+          if (!$exe) { throw "No executable" }
+          Copy-Item $exe.FullName dist/package/
+          # Qt, without the compiler runtime (the Visual C++ DLLs are copied below, from the compiler's own folder)
+          windeployqt --release --no-compiler-runtime "dist/package/$appName.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Copy-Item LICENSE dist/package/
+          $crt = Get-ChildItem (Join-Path $env:VCToolsRedistDir "x64") -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
+          if (!$crt) { throw "The Visual C++ runtime DLLs are missing" }
+          Copy-Item (Join-Path $crt.FullName "*.dll") dist/package/ -Force
+          foreach ($file in @("vcruntime140.dll", "msvcp140.dll")) { if (!(Test-Path "dist/package/$file")) { throw "Missing $file" } }
+          if (!(Get-ChildItem dist/package -Recurse -File -Filter qwindows.dll)) { throw "Missing the Qt Windows platform plugin" }
+
+          # NSIS: preinstalled on the runner, else from Chocolatey (which has its outages: tried again)
+          $compiler = Join-Path ${env:ProgramFiles(x86)} "NSIS/makensis.exe"
+          for ($try = 1; !(Test-Path $compiler) -and $try -le 4; $try++) {
+            choco install nsis --yes --no-progress
+            if (!(Test-Path $compiler)) { Start-Sleep -Seconds (20 * $try) }
+          }
+          if (!(Test-Path $compiler)) { throw "NSIS is not available" }
+          $setup = Join-Path $PWD "dist/Kadran-windows-x64-$tag-Setup.exe"
+          & $compiler "/DPRODUCT=Kadran" "/DAPP_VERSION=$($app.version)" "/DAPP_EXE=$appName.exe" "/DPAYLOAD=$PWD\dist\package" "/DOUTPUT=$setup" third_party\pxs\packaging\windows.nsi
+          if ($LASTEXITCODE) { throw "makensis failed" }
+
+          # Installed in a clean folder, started with only the system in PATH: what the installer holds is all it has
+          $clean = Join-Path $env:RUNNER_TEMP "Kadran installed"
+          $installer = Start-Process -FilePath $setup -ArgumentList "/S /CurrentUser /D=$clean" -Wait -PassThru
+          if ($installer.ExitCode) { throw "The installer failed: $($installer.ExitCode)" }
+          $installed = Join-Path $clean "app/$appName.exe"
+          if (!(Test-Path $installed)) { throw "The installed executable is missing" }
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $process = Start-Process -FilePath $installed -WorkingDirectory $clean -ArgumentList '--check' -Wait -PassThru
+          if ($process.ExitCode) { throw "The installed application failed its check: $($process.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kadran-windows-x64
+          path: dist/Kadran-windows-x64-*-Setup.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test, package-macos, package-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets=("dist/Kadran-macos-arm64-$GITHUB_REF_NAME.zip" "dist/Kadran-macos-x64-$GITHUB_REF_NAME.zip" "dist/Kadran-windows-x64-$GITHUB_REF_NAME-Setup.exe")
+          for asset in "${assets[@]}"; do test -s "$asset"; done
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Kadran $GITHUB_REF_NAME"
+          fi
