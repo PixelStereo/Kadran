@@ -19,7 +19,7 @@ html, body { height:100%; margin:0; background:var(--bg); color:var(--text); fon
 #main { flex:1; min-width:0; position:relative; }
 #frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--bg); }
 body.resizing #frame { pointer-events:none; }
-.bar { display:flex; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); gap:6px; }
+.bar { display:flex; flex-wrap:wrap; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); gap:6px; }
 .bar h1 { flex:1; margin:0; font-size:15px; font-weight:600; letter-spacing:.02em; }
 .bar .dot { width:8px; height:8px; border-radius:50%; background:var(--bad); }
 .bar .dot.ok { background:var(--ok); }
