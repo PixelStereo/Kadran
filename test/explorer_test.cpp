@@ -109,6 +109,15 @@ int main(int argc, char **argv)
     }
     CHECK(ex.addControl(dev, "/mix/level", "knob") != 0);
     CHECK(ex.controls().back().widget == "knob" && ex.controls().back().boundLabel == "Device:/mix/level");
+    { // The preferences: the widget a dropped parameter becomes, and sizes kept within the grid
+        ex.setPrefs(QJsonObject{{"widgets", QJsonObject{{"float", "knob"}, {"bool", "nonsense"}}}, {"sizes", QJsonObject{{"knob", QJsonArray{99, 0}}, {"nope", QJsonArray{1, 1}}}}});
+        const QJsonObject p = ex.prefs();
+        CHECK(p.value("widgets").toObject().value("float").toString() == "knob" && !p.value("widgets").toObject().contains("bool"));
+        CHECK(p.value("sizes").toObject().value("knob").toArray()[0].toInt() == 12 && p.value("sizes").toObject().value("knob").toArray()[1].toInt() == 1 && !p.value("sizes").toObject().contains("nope"));
+        const quint64 viaPrefs = ex.addControl(dev, "/mix/level");
+        CHECK(viaPrefs && ex.control(viaPrefs)->widget == "knob");
+        ex.setPrefs({});
+    }
     const quint64 plain = ex.addControl(dev, "/mix/level", "hold");
     CHECK(plain != 0 && ex.control(plain)->widget.isEmpty()); // a widget of another kind is ignored
 

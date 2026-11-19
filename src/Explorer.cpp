@@ -1,6 +1,8 @@
 #include "Explorer.h"
 
+#include <QHash>
 #include <QJsonArray>
+#include <algorithm>
 #include <QNetworkInterface>
 #include <QSet>
 
@@ -134,9 +136,16 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QStrin
     if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
     std::optional<Control> c = controls::forParameter(*this, deviceId, path, group);
     if (!c) return 0;
-    if (!widget.isEmpty()) {
+    ParamInfo info;
+    QString wanted = widget; // the one asked for, or the one the preferences give to this type of parameter
+    if (wanted.isEmpty() && this->info(deviceId, path, &info)) {
+        static const QHash<int, const char *> keys = {{int(ParamInfo::Type::Float), "float"}, {int(ParamInfo::Type::Int), "int"}, {int(ParamInfo::Type::Bool), "bool"},
+                                                      {int(ParamInfo::Type::Choice), "choice"}, {int(ParamInfo::Type::Trigger), "trigger"}};
+        wanted = m_prefs.value("widgets").toObject().value(QLatin1String(keys.value(int(info.type), ""))).toString();
+    }
+    if (!wanted.isEmpty()) {
         const auto allowed = widgetsFor(deviceId, path);
-        if (std::any_of(allowed.begin(), allowed.end(), [&](const auto &w) { return w.first == widget; })) c->widget = widget;
+        if (std::any_of(allowed.begin(), allowed.end(), [&](const auto &w) { return w.first == wanted; })) c->widget = wanted;
     }
     c->boundLabel = d->name + QLatin1Char(':') + path;
     const quint64 id = controls::add(m_controls, m_nextControl, *c, makeKey);
@@ -178,6 +187,40 @@ QList<QPair<QString, QString>> Explorer::widgetsFor(quint64 deviceId, const QStr
     if (info.type == ParamInfo::Type::Trigger) return writable ? QList<QPair<QString, QString>>{{"hold", "Hold button"}, {"tap", "Tap button"}} : QList<QPair<QString, QString>>{};
     if (writable) return {{"switch", "Switch"}, {"led", "LED"}};
     return {{"led", "LED"}};
+}
+
+// The preferences
+
+static const QList<QPair<const char *, QStringList>> kTypeWidgets = {{"float", {"vfader", "fader", "knob", "number", "slim", "vslim", "meter", "hmeter", "readout", "graph"}},
+                                                                     {"int", {"vfader", "fader", "knob", "number", "slim", "vslim", "meter", "hmeter", "readout", "graph"}},
+                                                                     {"bool", {"switch", "led"}},
+                                                                     {"choice", {"buttons", "menu", "readout"}},
+                                                                     {"trigger", {"hold", "tap"}}};
+static const QStringList kSizeWidgets = {"vfader", "fader", "knob", "number", "slim", "vslim", "meter", "hmeter", "readout", "graph", "switch", "led", "buttons", "menu", "hold", "tap",
+                                         "picker", "pad", "adsr", "multi", "hmulti"};
+
+QJsonObject Explorer::prefsOptions()
+{
+    QJsonObject types;
+    for (const auto &t : kTypeWidgets) types.insert(QLatin1String(t.first), QJsonArray::fromStringList(t.second));
+    return QJsonObject{{"types", types}, {"sizeWidgets", QJsonArray::fromStringList(kSizeWidgets)}};
+}
+
+void Explorer::setPrefs(const QJsonObject &prefs)
+{
+    QJsonObject widgets, sizes;
+    const QJsonObject w = prefs.value("widgets").toObject();
+    for (const auto &t : kTypeWidgets)
+        if (const QString v = w.value(QLatin1String(t.first)).toString(); t.second.contains(v)) widgets.insert(QLatin1String(t.first), v);
+    const QJsonObject s = prefs.value("sizes").toObject();
+    for (const QString &k : kSizeWidgets) {
+        const QJsonArray a = s.value(k).toArray();
+        if (a.size() == 2) sizes.insert(k, QJsonArray{std::clamp(a[0].toInt(1), 1, 12), std::clamp(a[1].toInt(1), 1, 40)});
+    }
+    const QJsonObject clean{{"widgets", widgets}, {"sizes", sizes}};
+    if (clean == m_prefs) return;
+    m_prefs = clean;
+    emit prefsChanged();
 }
 
 // The interface
@@ -551,9 +594,9 @@ QList<Explorer::Target> Explorer::targetsFromJson(const QJsonArray &list)
 QString Explorer::addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group)
 {
     if (targets.isEmpty()) return QString();
-    const auto numeric = [this](const Target &t) {
-        const auto w = widgetsFor(t.device, t.path);
-        return !w.isEmpty() && w.first().first == QLatin1String("vfader");
+    const auto numeric = [this](const Target &t) { // a number that can be set
+        ParamInfo info;
+        return this->info(t.device, t.path, &info) && info.isNumber() && (info.access & ParamInfo::Write);
     };
     if (pad && widget.isEmpty() && targets.size() == 2 && targets[0].device == targets[1].device && numeric(targets[0]) && numeric(targets[1]))
         return addPad(targets[0].device, targets[0].path, targets[1].path, group) ? QStringLiteral("Added an XY pad") : QStringLiteral("These cannot make a pad");
