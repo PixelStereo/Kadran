@@ -74,7 +74,7 @@ inline constexpr char kScript[] = R"JS(
 (() => {
   const $ = s => document.querySelector(s);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button' };
+  const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
   let ws = null, devices = [], trees = {}, openNodes = new Set(), selected = new Map(), filter = '', lastRow = null, statusTimer = 0;
   const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
   const say = t => { $('#status').textContent = t || ''; clearTimeout(statusTimer); if (t) statusTimer = setTimeout(() => { $('#status').textContent = ''; }, 6000); };
@@ -132,7 +132,7 @@ inline constexpr char kScript[] = R"JS(
     row.appendChild(el('span', 'arrow', leaf ? '' : (open ? '▼' : '▶')));
     row.appendChild(el('span', 'name', n.n));
     if (n.t) row.appendChild(el('span', 'ty', n.t));
-    row.title = n.p + (n.d ? '\n' + n.d : '') + (leaf && !can ? '\n(read only, or more than one argument: not a control yet)' : '');
+    row.title = n.p + (n.d ? '\n' + n.d : '') + (leaf && !can ? '\n(more than one argument, or text: not a control yet)' : '');
     if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)
       row.draggable = true;
       row.ondragstart = e => {

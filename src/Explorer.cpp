@@ -165,12 +165,20 @@ quint64 Explorer::addPad(quint64 deviceId, const QString &pathX, const QString &
 QList<QPair<QString, QString>> Explorer::widgetsFor(quint64 deviceId, const QString &path) const
 {
     ParamInfo info;
-    if (!this->info(deviceId, path, &info) || !(info.access & ParamInfo::Write) || info.type == ParamInfo::Type::Text) return {};
-    if (info.isNumber())
-        return {{"vfader", "Vertical fader"}, {"fader", "Fader"}, {"knob", "Encoder"}, {"number", "Number"}, {"slim", "Slim fader"}, {"vslim", "Slim vertical fader"}};
-    if (info.type == ParamInfo::Type::Choice) return {{"buttons", "Buttons"}, {"menu", "Menu"}};
-    if (info.type == ParamInfo::Type::Trigger) return {{"hold", "Hold button"}, {"tap", "Tap button"}};
-    return {{"switch", "Switch"}};
+    if (!this->info(deviceId, path, &info) || info.type == ParamInfo::Type::Text) return {};
+    const bool writable = info.access & ParamInfo::Write;
+    // What a control only shows (a meter, a readout, a graph, a lamp) is there for what cannot be set, and for what can: it is seen as well
+    const QList<QPair<QString, QString>> views = {{"meter", "Meter"}, {"hmeter", "Horizontal meter"}, {"readout", "Readout"}, {"graph", "Graph"}};
+    QList<QPair<QString, QString>> out;
+    if (info.isNumber()) {
+        if (writable)
+            out = {{"vfader", "Vertical fader"}, {"fader", "Fader"}, {"knob", "Encoder"}, {"number", "Number"}, {"slim", "Slim fader"}, {"vslim", "Slim vertical fader"}};
+        return out + views;
+    }
+    if (info.type == ParamInfo::Type::Choice) return writable ? QList<QPair<QString, QString>>{{"buttons", "Buttons"}, {"menu", "Menu"}, {"readout", "Readout"}} : QList<QPair<QString, QString>>{{"readout", "Readout"}};
+    if (info.type == ParamInfo::Type::Trigger) return writable ? QList<QPair<QString, QString>>{{"hold", "Hold button"}, {"tap", "Tap button"}} : QList<QPair<QString, QString>>{};
+    if (writable) return {{"switch", "Switch"}, {"led", "LED"}};
+    return {{"led", "LED"}};
 }
 
 // The interface
@@ -569,7 +577,7 @@ static QJsonObject nodeJson(const Explorer &ex, quint64 device, const pxs::oscqu
     if (n.isLeaf()) {
         QJsonArray widgets;
         for (const auto &w : ex.widgetsFor(device, n.path)) widgets.append(w.first);
-        if (!widgets.isEmpty() && (n.access & 2)) o["w"] = widgets;
+        if (!widgets.isEmpty()) o["w"] = widgets;
     }
     if (!n.children.empty() && depth < 64) {
         QJsonArray children;

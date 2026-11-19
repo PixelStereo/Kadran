@@ -31,6 +31,10 @@ int main(int argc, char **argv)
     auto q = std::make_unique<Parameter>("on", "On", Parameter::Type::Bool);
     q->bind([&] { return QVariant(on); }, [&](const QVariant &v) { on = v.toBool(); });
     tree.add("/mix/on", std::move(q));
+    double vu = 0.4;
+    auto vuParam = std::make_unique<Parameter>("vu", "Vu", Parameter::Type::Float);
+    vuParam->range(0, 1).bind([&] { return QVariant(vu); }, [&](const QVariant &) {}).readOnly();
+    tree.add("/mix/vu", std::move(vuParam));
     pxs::OscService service(&tree, "Device");
     CHECK(service.start(0, 0, false));
 
@@ -100,19 +104,29 @@ int main(int argc, char **argv)
     // A node: all it holds, in a group of the page or in a page of its own; and the list goes back as it was
     {
         const std::vector<Control> before = ex.controls();
-        CHECK(ex.countNode(dev, "/mix") == 3); // level, rate, on
+        CHECK(ex.countNode(dev, "/mix") == 4); // level, rate, on, vu (a view)
         CHECK(ex.countNode(dev, "/nowhere") == 0);
         CHECK(ex.addNode(dev, "/mix", false, 0).startsWith("Added a group"));
         size_t groups = 0, held = 0;
         quint64 groupId = 0;
         for (const Control &c : ex.controls()) if (c.kind == Control::Kind::Group) { ++groups; groupId = c.id; }
         for (const Control &c : ex.controls()) if (c.group == groupId && groupId) ++held;
-        CHECK(groups == 1 && held == 3);
+        CHECK(groups == 1 && held == 4);
         CHECK(ex.addNode(dev, "/mix", true, 0).startsWith("Added a page"));
         quint64 pageId = 0;
         for (const Control &c : ex.controls()) if (c.kind == Control::Kind::Group && c.name.toLower() == "mix" && c.id != groupId) pageId = c.id;
         CHECK(pageId && ex.control(pageId)->group == 0);
         CHECK(ex.restore(before) && ex.controls().size() == before.size());
+    }
+
+    // What cannot be set is shown: a meter; a number that can be set can be shown too
+    {
+        CHECK(ex.widgetsFor(dev, "/mix/vu").first().first == "meter");
+        const quint64 view = ex.addControl(dev, "/mix/vu");
+        CHECK(view && ex.control(view)->widget == "meter" && std::abs(ex.control(view)->value - 0.4) < 1e-6);
+        CHECK(!ex.setValue(view, 0.9) || std::abs(vu - 0.4) < 1e-9); // nothing sets it
+        const quint64 graph = ex.addControl(dev, "/mix/level", "graph");
+        CHECK(graph && ex.control(graph)->widget == "graph");
     }
 
     // Pages: one added, emptied, removed; all cleared
