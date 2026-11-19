@@ -157,6 +157,12 @@ int main(int argc, char **argv)
         auto b = std::make_unique<Parameter>("rate", "Rate", Parameter::Type::Float);
         b->range(0, 10).bind([&] { return QVariant(rate); }, [&](const QVariant &v) { rate = v.toDouble(); });
         tree.add("/mix/rate", std::move(b));
+        std::vector<double> many(1500, 0.5); // a namespace of a size a real device has: the message is far over 64 KB
+        for (size_t i = 0; i < many.size(); ++i) {
+            auto p = std::make_unique<Parameter>(QStringLiteral("p%1").arg(i), QStringLiteral("P%1").arg(i), Parameter::Type::Float);
+            p->range(0, 1).bind([&many, i] { return QVariant(many[i]); }, [&many, i](const QVariant &v) { many[i] = v.toDouble(); });
+            tree.add(QStringLiteral("/big/p%1").arg(i), std::move(p));
+        }
         pxs::OscService device(&tree, "Device");
         require(device.start(0, 0, false), "the device starts");
 
@@ -196,8 +202,9 @@ int main(int argc, char **argv)
         const QJsonObject treeMessage = find(page.messages(), "tree");
         require(!treeMessage.isEmpty(), "its namespace is sent when it is read");
         const QJsonArray top = treeMessage.value("root").toObject().value("c").toArray();
-        require(top.size() == 1 && top[0].toObject().value("n").toString() == "mix", "the namespace is a tree of nodes");
-        const QJsonObject leaf = top[0].toObject().value("c").toArray()[0].toObject();
+        require(top.size() == 2 && top[0].toObject().value("n").toString() == "big" && top[0].toObject().value("c").toArray().size() == 1500, "a large namespace arrives whole");
+        require(top[1].toObject().value("n").toString() == "mix", "the namespace is a tree of nodes");
+        const QJsonObject leaf = top[1].toObject().value("c").toArray()[0].toObject();
         require(leaf.value("p").toString() == "/mix/level" && leaf.value("t").toString() == "f" && leaf.value("w").toArray().at(0).toString() == "vfader", "a leaf says its address, type and widgets");
 
         // Put addresses on the page: one, two (a pad), by a menu and by a drop

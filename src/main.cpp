@@ -20,6 +20,8 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QHostAddress>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
 #include <QHBoxLayout>
@@ -48,6 +50,18 @@ void loadInterface(Explorer &ex)
     if (!f.open(QIODevice::ReadOnly)) return;
     ex.fromJson(QJsonDocument::fromJson(f.read(32 << 20)).object());
 }
+// Another Kadran already on the wanted port: opening Kadran again only shows its page
+bool kadranListening(quint16 port)
+{
+    QTcpSocket socket;
+    socket.connectToHost(QHostAddress::LocalHost, port);
+    if (!socket.waitForConnected(300)) return false;
+    socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    QByteArray reply;
+    while (socket.waitForReadyRead(800)) reply += socket.readAll();
+    return reply.contains("<title>Kadran</title>");
+}
+
 // --check: the server starts and serves its two pages. For the package to be tried before it is published
 int selfTest()
 {
@@ -91,6 +105,10 @@ int main(int argc, char **argv)
     KadranServer server(&explorer);
     server.setMaxFrame(16 << 20); // an interface opened from the page
     const quint16 wanted = quint16(settings.value("port", kDefaultPort).toUInt());
+    if (kadranListening(wanted)) {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("http://127.0.0.1:%1/").arg(wanted)));
+        return 0;
+    }
     if (!server.start(wanted, QString()) && !server.start(0, QString())) {
         qWarning("Kadran cannot serve its page: %s", qPrintable(server.status()));
         return 1;
