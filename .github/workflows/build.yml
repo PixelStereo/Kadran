@@ -205,7 +205,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git curl file build-essential cmake ninja-build python3 libgl1-mesa-dev \
-            qt6-base-dev qt6-websockets-dev libqt6websockets6 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            qt6-base-dev qmake6 qt6-websockets-dev libqt6websockets6 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfuse2 desktop-file-utils
       - uses: actions/checkout@v4
         with:
