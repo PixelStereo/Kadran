@@ -228,9 +228,9 @@ int main(int argc, char **argv)
         { // Physics on the ball of the pad, end to end: held by a spring to the hand, then drawn to where the hand was once let go
             const quint64 padId = explorer.controls()[1].id;
             const QByteArray ball = "{\"physics\":{\"mode\":2,\"friction\":30,\"attraction\":200}}";
-            frame.sendText("{\"t\":\"edit\",\"id\":\"" + QByteArray::number(padId) + "\",\"props\":{\"balls\":[" + ball + "]}}");
-            frame.pumpUntil([&] { return explorer.controls()[1].balls[0].physics.mode == 2; });
-            require(explorer.controls()[1].balls[0].physics.mode == 2 && explorer.controls()[1].balls[0].px == "/mix/level", "a ball's physics is set from the page, its addresses kept");
+            frame.sendText("{\"t\":\"edit\",\"id\":\"" + QByteArray::number(padId) + "\",\"props\":" + ball + "}");
+            frame.pumpUntil([&] { return explorer.controls()[1].physics.mode == 2; });
+            require(explorer.controls()[1].physics.mode == 2 && explorer.controls()[1].balls[0].px == "/mix/level", "a ball's physics is set from the page, its addresses kept");
             frame.sendText("{\"t\":\"points\",\"id\":\"" + QByteArray::number(padId) + "\",\"v\":[0.9,9]}");
             frame.pumpUntil([&] { return level > 0.8; });
             require(level > 0.8 && rate > 7, "held by the hand, the ball goes to it through the spring");
