@@ -220,7 +220,7 @@ jobs:
           git config --global --add safe.directory "$PWD"
           tag=dev
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; fi
-          export QMAKE=/usr/lib/aarch64-linux-gnu/qt6/bin/qmake
+          export QMAKE="$(command -v qmake6)"; echo "qmake: $QMAKE"; "$QMAKE" -query QT_INSTALL_PLUGINS
           bash scripts/package-linux.sh build dist "$tag"
           ls -l dist
           mkdir -p "$RUNNER_TEMP/smoke"
