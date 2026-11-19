@@ -27,6 +27,12 @@ Qt 6.4 or later, C++17.
 ```sh
 git clone --recursive https://github.com/PixelStereo/Kadran.git
 cd Kadran
+./build.sh            # macOS, Linux (apt) and Windows (Git Bash; or build.cmd): installs what is missing, builds, opens Kadran
+```
+
+Or by hand:
+
+```sh
 cmake -S . -B build && cmake --build build
 ctest --test-dir build
 open build/Kadran*.app        # macOS; elsewhere run the executable

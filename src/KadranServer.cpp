@@ -1,4 +1,6 @@
 #include "KadranServer.h"
+#include "About.h"
+#include <QCoreApplication>
 #include "ShellPage.h"
 
 #include <QCryptographicHash>
@@ -98,6 +100,7 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
     if (type == QLatin1String("hello")) {
         m_shells.insert(client);
         leaveControls(client); // the front page has no controls of its own
+        sendText(client, QJsonDocument(QJsonObject{{"t", "about"}, {"html", aboutHtml(QCoreApplication::applicationVersion())}}).toJson(QJsonDocument::Compact));
         sendDevices(client);
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);
         return true;

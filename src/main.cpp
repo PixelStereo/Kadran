@@ -6,7 +6,9 @@
 #include <pxs/Theme.h>
 
 #include <QApplication>
+#include "About.h"
 #include <QCheckBox>
+#include <QMessageBox>
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
@@ -96,6 +98,7 @@ int main(int argc, char **argv)
         }
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Kadran"));
+    app.setApplicationVersion(QStringLiteral(KADRAN_VERSION));
     app.setOrganizationName(QStringLiteral("Pixel Stereo"));
     app.setOrganizationDomain(QStringLiteral("pixelstereo.fr"));
     pxs::apply(app, pxs::graphite());
@@ -143,9 +146,11 @@ int main(int argc, char **argv)
     layout->addWidget(address);
     auto *open = new QPushButton(QStringLiteral("Open in the browser"));
     auto *copy = new QPushButton(QStringLiteral("Copy the address"));
+    auto *about = new QPushButton(QStringLiteral("About"));
     auto *buttons = new QHBoxLayout;
     buttons->addWidget(open);
     buttons->addWidget(copy);
+    buttons->addWidget(about);
     buttons->addStretch();
     layout->addLayout(buttons);
     auto *autoOpen = new QCheckBox(QStringLiteral("Open the browser when Kadran starts"));
@@ -155,6 +160,14 @@ int main(int argc, char **argv)
     state->setStyleSheet(QStringLiteral("color:#8a8a94;"));
     layout->addWidget(state);
     QObject::connect(open, &QPushButton::clicked, [&] { QDesktopServices::openUrl(QUrl(local)); });
+    QObject::connect(about, &QPushButton::clicked, [&] {
+        QMessageBox box(&window);
+        box.setWindowTitle(QStringLiteral("About Kadran"));
+        box.setTextFormat(Qt::RichText);
+        box.setText(aboutHtml(QCoreApplication::applicationVersion()));
+        box.setStandardButtons(QMessageBox::Close);
+        box.exec();
+    });
     QObject::connect(copy, &QPushButton::clicked, [&] { QApplication::clipboard()->setText(urls.first()); });
     QObject::connect(autoOpen, &QCheckBox::toggled, [&](bool on) { settings.setValue("openBrowser", on); });
     QTimer refresh;

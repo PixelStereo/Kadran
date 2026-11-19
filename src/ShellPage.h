@@ -58,7 +58,7 @@ inline constexpr char kBody[] = R"HTML(
 <div id="app">
   <div id="side">
     <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device by its address">+ Device</button></div>
-    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
+    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="about" title="About Kadran">About</button><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
     <div id="tree"></div>
     <div id="status"></div>
@@ -87,6 +87,7 @@ inline constexpr char kScript[] = R"JS(
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
       if (m.t === 'devices') { devices = m.list || []; render(); }
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
+      else if (m.t === 'about') aboutHtml = m.html;
       else if (m.t === 'say') say(m.text);
       else if (m.t === 'confirm') { if (confirm('Add ' + m.n + ' controls, as a ' + m.as + '?')) send({ t: 'addNode', device: m.device, path: m.path, as: m.as, page: m.page, confirmed: true }); }
       else if (m.t === 'file') download(m.name || 'Interface.kadran', JSON.stringify(m.doc, null, 2));
@@ -201,6 +202,13 @@ inline constexpr char kScript[] = R"JS(
     }
     m.style.left = Math.min(e.clientX, innerWidth - 220) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
   }
+  let aboutHtml = '';
+  $('#about').onclick = () => {
+    const dlg = el('div'); dlg.id = 'dlg'; const box = el('div'); box.style.cssText = 'max-width:480px;max-height:80vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px 20px';
+    box.innerHTML = aboutHtml; box.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+    const close = el('button', 'on', 'Close'); close.style.marginTop = '12px'; close.onclick = () => dlg.remove(); box.appendChild(close); dlg.appendChild(box); document.body.appendChild(dlg);
+    dlg.onclick = e => { if (e.target === dlg) dlg.remove(); };
+  };
   $('#pages').onclick = e => {
     e.stopPropagation();
     const m = $('#menu'); m.textContent = ''; m.hidden = false;
