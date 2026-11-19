@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Kadran
+Comment=OSCQuery explorer and control page
+Exec=kadran
+Icon=kadran
+Categories=AudioVideo;Audio;Network;
+Terminal=false
