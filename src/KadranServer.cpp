@@ -78,6 +78,21 @@ void KadranServer::tick()
 
 void KadranServer::clientGone(QTcpSocket *client) { m_shells.remove(client); }
 
+// All the controls of a node, in a group of the page or a page of their own. A long list is confirmed first, on the front page
+void KadranServer::node(double device, const QString &path, bool asPage, quint64 page, bool confirmed)
+{
+    const int n = m_ex->countNode(quint64(device), path);
+    if (n > kConfirmAbove && !confirmed) {
+        const QByteArray ask = QJsonDocument(QJsonObject{{"t", "confirm"}, {"n", n}, {"device", device}, {"path", path}, {"as", asPage ? "page" : "group"}, {"page", QString::number(page)}})
+                                   .toJson(QJsonDocument::Compact);
+        for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, ask);
+        return;
+    }
+    checkpoint();
+    const QString text = m_ex->addNode(quint64(device), path, asPage, page);
+    for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
+}
+
 bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonObject &o)
 {
     if (type == QLatin1String("hello")) {
@@ -99,16 +114,32 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         m_ex->openDevice(id);
         m_dirty = true;
     } else if (type == QLatin1String("add")) {
+        checkpoint();
         const QString text = m_ex->addTargets(Explorer::targetsFromJson(o.value("targets").toArray()), o.value("widget").toString(), o.value("pad").toBool(),
                                               o.value("page").toString().toULongLong());
         say(client, text);
     } else if (type == QLatin1String("drop")) { // from the controls page: its text is what the tree gave
         const QJsonArray list = QJsonDocument::fromJson(o.value("data").toString().toUtf8()).array();
-        const QString text = m_ex->addTargets(Explorer::targetsFromJson(list), QString(), true, o.value("page").toString().toULongLong());
+        const quint64 page = o.value("page").toString().toULongLong();
+        if (list.size() == 1 && list[0].toObject().value("node").toBool()) { // a node, not a parameter: all it holds, in a group or a page
+            const QJsonObject n = list[0].toObject();
+            node(n.value("device").toDouble(), n.value("path").toString(), n.value("as").toString() == QLatin1String("page"), page, false);
+            return true;
+        }
+        checkpoint();
+        const QString text = m_ex->addTargets(Explorer::targetsFromJson(list), QString(), true, page);
         for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
+    } else if (type == QLatin1String("addNode")) {
+        node(o.value("device").toDouble(), o.value("path").toString(), o.value("as").toString() == QLatin1String("page"), o.value("page").toString().toULongLong(),
+             o.value("confirmed").toBool());
+    } else if (type == QLatin1String("undo") || type == QLatin1String("redo")) {
+        const bool done = type == QLatin1String("undo") ? undo() : redo();
+        if (done) emit layoutEdited();
+        say(client, done ? (type == QLatin1String("undo") ? QStringLiteral("Undone") : QStringLiteral("Redone")) : QStringLiteral("Nothing to %1").arg(type));
     } else if (type == QLatin1String("save")) {
         sendText(client, QJsonDocument(QJsonObject{{"t", "file"}, {"name", "Interface.kadran"}, {"doc", m_ex->toJson()}}).toJson(QJsonDocument::Compact));
     } else if (type == QLatin1String("load")) {
+        checkpoint();
         QString why;
         say(client, m_ex->fromJson(o.value("doc").toObject(), &why) ? QStringLiteral("Interface opened") : why);
         m_dirty = true;

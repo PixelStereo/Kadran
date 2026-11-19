@@ -407,6 +407,58 @@ QString Explorer::addTargets(const QList<Target> &targets, const QString &widget
     return added ? QStringLiteral("Added %1 control(s)").arg(added) : QStringLiteral("Not shown as a control");
 }
 
+// The parameters under a node that a control can show, in the order of the namespace
+static void collect(const Explorer &ex, quint64 device, const pxs::oscquery::RemoteNode &n, QStringList &out, int depth)
+{
+    if (n.isLeaf()) {
+        if (!ex.widgetsFor(device, n.path).isEmpty()) out << n.path;
+        return;
+    }
+    if (depth > 64) return;
+    for (const auto &c : n.children) collect(ex, device, c.second, out, depth + 1);
+}
+
+int Explorer::countNode(quint64 deviceId, const QString &path) const
+{
+    const Dev *d = device(deviceId);
+    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
+    const auto *node = d->client->tree().find(path);
+    QStringList paths;
+    if (node) collect(*this, deviceId, *node, paths, 0);
+    return int(paths.size());
+}
+
+QString Explorer::addNode(quint64 deviceId, const QString &path, bool asPage, quint64 page)
+{
+    Dev *d = device(deviceId);
+    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return QStringLiteral("This device is not ready");
+    const auto *node = d->client->tree().find(path);
+    QStringList paths;
+    if (node) collect(*this, deviceId, *node, paths, 0);
+    if (paths.isEmpty()) return QStringLiteral("Nothing to add here");
+    if (m_controls.size() + size_t(paths.size()) + 1 > size_t(controls::kMaxControls)) return QStringLiteral("Too many controls on the page");
+    Control group;
+    group.kind = Control::Kind::Group;
+    group.name = node->name.isEmpty() ? d->name : node->name;
+    group.group = asPage ? 0 : page;
+    const quint64 groupId = controls::add(m_controls, m_nextControl, group, makeKey);
+    if (!groupId) return QStringLiteral("The page is full");
+    int added = 0;
+    for (const QString &p : paths)
+        if (addControl(deviceId, p, QString(), groupId)) ++added;
+    changed();
+    return asPage ? QStringLiteral("Added a page with %1 control(s)").arg(added) : QStringLiteral("Added a group with %1 control(s)").arg(added);
+}
+
+bool Explorer::restore(const std::vector<Control> &list)
+{
+    m_controls = list;
+    controls::tidyGroups(m_controls);
+    changed();
+    for (const auto &d : m_devices) listenAll(d->id);
+    return true;
+}
+
 QJsonArray Explorer::devicesJson() const
 {
     QJsonArray out;

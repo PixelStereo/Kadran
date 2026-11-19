@@ -10,6 +10,8 @@
 //   client -> {"t":"drop","data":"<json of targets>","page":"<id>","x":..,"y":..}            (from the controls page)
 //   client -> {"t":"save"}  server -> {"t":"file","name":..,"doc":{..}}      client -> {"t":"load","doc":{..}}
 //   server -> {"t":"say","text":..}
+//   server -> {"t":"confirm","n":..,"device":..,"path":..,"as":"group"|"page","page":".."}   a node of more than 20 controls: ask, then send addNode with "confirmed":true
+//   client -> {"t":"addNode","device":..,"path":..,"as":"group"|"page","page":"..","confirmed":bool} / {"t":"undo"} / {"t":"redo"}
 #include "Explorer.h"
 
 #include <QSet>
@@ -34,6 +36,8 @@ private:
     void sendDevices(QTcpSocket *client = nullptr);
     void sendTree(quint64 device, QTcpSocket *client = nullptr);
     void say(QTcpSocket *client, const QString &text);
+    void node(double device, const QString &path, bool asPage, quint64 page, bool confirmed);
+    static constexpr int kConfirmAbove = 20; // more controls than this from one node: the operator confirms
 
     Explorer *m_ex;
     QSet<QTcpSocket *> m_shells; // the front pages

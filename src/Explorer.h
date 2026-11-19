@@ -48,6 +48,10 @@ public:
     };
     QString addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group = 0);
     static QList<Target> targetsFromJson(const QJsonArray &list);
+    // A node of a device's namespace: all the controls it holds, in a group of the page (`page`: where; 0 the first one) or in a page of
+    // their own (`asPage`). `count` is how many controls that makes (the front page asks to confirm a long one)
+    int countNode(quint64 deviceId, const QString &path) const;
+    QString addNode(quint64 deviceId, const QString &path, bool asPage, quint64 page);
 
     // For the front page: the devices (id, name, state), and a device's namespace (name, address, type tags, the widgets it can take)
     QJsonArray devicesJson() const;
@@ -81,6 +85,7 @@ public:
     bool setLayouts(const QHash<quint64, std::array<int, 4>> &places) override;
     bool update(quint64 id, const pxs::controls::Control &changed) override;
     bool remove(quint64 id) override;
+    bool restore(const std::vector<pxs::controls::Control> &controls) override; // undo, redo
 
     // ParameterSource: scope is a device's id
     bool info(quint64 scope, const QString &path, ParamInfo *out) const override;

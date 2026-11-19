@@ -58,7 +58,7 @@ inline constexpr char kBody[] = R"HTML(
 <div id="app">
   <div id="side">
     <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device by its address">+ Device</button></div>
-    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><span style="flex:1"></span><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
+    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
     <div id="tree"></div>
     <div id="status"></div>
@@ -88,6 +88,7 @@ inline constexpr char kScript[] = R"JS(
       if (m.t === 'devices') { devices = m.list || []; render(); }
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
       else if (m.t === 'say') say(m.text);
+      else if (m.t === 'confirm') { if (confirm('Add ' + m.n + ' controls, as a ' + m.as + '?')) send({ t: 'addNode', device: m.device, path: m.path, as: m.as, page: m.page, confirmed: true }); }
       else if (m.t === 'file') download(m.name || 'Interface.kadran', JSON.stringify(m.doc, null, 2));
     };
   }
@@ -131,6 +132,15 @@ inline constexpr char kScript[] = R"JS(
     row.appendChild(el('span', 'name', n.n));
     if (n.t) row.appendChild(el('span', 'ty', n.t));
     row.title = n.p + (n.d ? '\n' + n.d : '') + (leaf && !can ? '\n(read only, or more than one argument: not a control yet)' : '');
+    if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)
+      row.draggable = true;
+      row.ondragstart = e => {
+        const as = e.altKey ? 'page' : 'group';
+        e.dataTransfer.setData('application/x-pxs-address', JSON.stringify([{ device: dev, path: n.p, node: true, as }]));
+        e.dataTransfer.setData('text/plain', n.p);
+        e.dataTransfer.effectAllowed = 'copy';
+      };
+    }
     if (can) {
       row.draggable = true;
       row.ondragstart = e => {
@@ -172,12 +182,14 @@ inline constexpr char kScript[] = R"JS(
   const frame = $('#frame');
   const pageId = () => { try { return String(frame.contentWindow.pxsPageId()); } catch (_) { return '-1'; } };
   function add(targets, widget, pad) { send({ t: 'add', targets, widget: widget || '', pad: !!pad, page: pageId() }); }
+  function addNode(device, path, as) { send({ t: 'addNode', device, path, as, page: pageId() }); }
   function menuFor(e, list, n, dev) {
     const m = $('#menu'); m.textContent = ''; m.hidden = false;
     const item = (text, fn, cls) => { const d = el('div', cls || '', text); if (fn) d.onclick = () => { closeMenu(); fn(); }; m.appendChild(d); };
     const targets = list ? list.map(s => ({ device: s.device, path: s.path })) : [];
     if (!list) {
-      item('Add all its parameters to the page', () => { const all = []; const walk = x => { if (x.w) all.push({ device: dev, path: x.p }); (x.c || []).forEach(walk); }; walk(n); if (all.length) add(all.slice(0, 64), '', false); else say('Nothing to add here'); });
+      item('Add all its parameters as a group of the page', () => addNode(dev, n.p, 'group'));
+      item('Add all its parameters as a new page', () => addNode(dev, n.p, 'page'));
     } else if (list.length === 1) {
       item('Add to the page', () => add(targets, '', true));
       item('Add as', null, 'head');
@@ -196,6 +208,12 @@ inline constexpr char kScript[] = R"JS(
   // The buttons, the keyboard, the width of the side panel
   $('#find').oninput = e => { filter = e.target.value.trim().toLowerCase(); render(); };
   $('#save').onclick = () => send({ t: 'save' });
+  $('#undo').onclick = () => send({ t: 'undo' }); $('#redo').onclick = () => send({ t: 'redo' });
+  document.addEventListener('keydown', e => {
+    const k = (e.key || '').toLowerCase(), t = e.target && e.target.tagName;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || t === 'INPUT' || t === 'TEXTAREA') return;
+    if (k === 'z' || k === 'y') { e.preventDefault(); send({ t: (k === 'y' || e.shiftKey) ? 'redo' : 'undo' }); }
+  });
   $('#open').onclick = () => $('#file').click();
   $('#file').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { send({ t: 'load', doc: JSON.parse(r.result) }); } catch (_) { say('Not an interface file'); } }; r.readAsText(f); e.target.value = ''; };
   $('#add').onclick = () => {

@@ -96,6 +96,25 @@ int main(int argc, char **argv)
     const quint64 plain = ex.addControl(dev, "/mix/level", "hold");
     CHECK(plain != 0 && ex.control(plain)->widget.isEmpty()); // a widget of another kind is ignored
 
+    using pxs::controls::Control;
+    // A node: all it holds, in a group of the page or in a page of its own; and the list goes back as it was
+    {
+        const std::vector<Control> before = ex.controls();
+        CHECK(ex.countNode(dev, "/mix") == 3); // level, rate, on
+        CHECK(ex.countNode(dev, "/nowhere") == 0);
+        CHECK(ex.addNode(dev, "/mix", false, 0).startsWith("Added a group"));
+        size_t groups = 0, held = 0;
+        quint64 groupId = 0;
+        for (const Control &c : ex.controls()) if (c.kind == Control::Kind::Group) { ++groups; groupId = c.id; }
+        for (const Control &c : ex.controls()) if (c.group == groupId && groupId) ++held;
+        CHECK(groups == 1 && held == 3);
+        CHECK(ex.addNode(dev, "/mix", true, 0).startsWith("Added a page"));
+        quint64 pageId = 0;
+        for (const Control &c : ex.controls()) if (c.kind == Control::Kind::Group && c.name.toLower() == "mix" && c.id != groupId) pageId = c.id;
+        CHECK(pageId && ex.control(pageId)->group == 0);
+        CHECK(ex.restore(before) && ex.controls().size() == before.size());
+    }
+
     // The interface is kept and found again
     const QJsonObject saved = ex.toJson();
     CHECK(saved.value("devices").toArray().size() == 1);
