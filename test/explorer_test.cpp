@@ -122,6 +122,8 @@ int main(int argc, char **argv)
         CHECK(d.value("widgets").toObject().value("float").toString() == "slim" && d.value("widgets").toObject().value("int").toString() == "slim");
         CHECK(d.value("sizes").toObject().value("slim").toArray() == QJsonArray({2, 1}) && d.value("sizes").toObject().value("vfader").toArray() == QJsonArray({1, 3}));
         CHECK(d.value("sizes").toObject().value("knob").toArray() == QJsonArray({2, 2}) && d.value("sizes").toObject().value("led").toArray() == QJsonArray({1, 1}));
+        CHECK(d.value("sizes").toObject().value("pad").toArray() == QJsonArray({3, 3}) && d.value("sizes").toObject().value("adsr").toArray() == QJsonArray({4, 2}) &&
+              d.value("sizes").toObject().value("multi").toArray() == QJsonArray({4, 3}) && d.value("sizes").toObject().value("hmulti").toArray() == QJsonArray({4, 3}));
         const quint64 byDefault = ex.addControl(dev, "/mix/level");
         CHECK(byDefault && ex.control(byDefault)->widget == "slim");
     }
