@@ -117,6 +117,13 @@ int main(int argc, char **argv)
         const quint64 viaPrefs = ex.addControl(dev, "/mix/level");
         CHECK(viaPrefs && ex.control(viaPrefs)->widget == "knob");
         ex.setPrefs({});
+        // With nothing chosen: a number is a horizontal slim fader, and every widget is its smallest
+        const QJsonObject d = ex.prefs();
+        CHECK(d.value("widgets").toObject().value("float").toString() == "slim" && d.value("widgets").toObject().value("int").toString() == "slim");
+        CHECK(d.value("sizes").toObject().value("slim").toArray() == QJsonArray({2, 1}) && d.value("sizes").toObject().value("vfader").toArray() == QJsonArray({1, 3}));
+        CHECK(d.value("sizes").toObject().value("knob").toArray() == QJsonArray({2, 2}) && d.value("sizes").toObject().value("led").toArray() == QJsonArray({1, 1}));
+        const quint64 byDefault = ex.addControl(dev, "/mix/level");
+        CHECK(byDefault && ex.control(byDefault)->widget == "slim");
     }
     const quint64 plain = ex.addControl(dev, "/mix/level", "hold");
     CHECK(plain != 0 && ex.control(plain)->widget.isEmpty()); // a widget of another kind is ignored
