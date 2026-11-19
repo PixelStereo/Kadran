@@ -3,6 +3,9 @@
 **Explore the OSCQuery devices of your network and play them on a page of controls.** A Pixel Stereo application, built on [pxs](https://github.com/PixelStereo/pxs).
 
 <!-- release-downloads:start -->
+**LATEST VERSION · [v0.1.0](https://github.com/PixelStereo/Kadran/releases/tag/v0.1.0)**
+
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple_Silicon-6b7787?style=for-the-badge&logo=apple&logoColor=white&labelColor=1a1c20)](https://github.com/PixelStereo/Kadran/releases/download/v0.1.0/Kadran-macos-arm64-v0.1.0.zip)&nbsp;&nbsp;[![macOS Intel](https://img.shields.io/badge/macOS-Intel-515b69?style=for-the-badge&logo=apple&logoColor=white&labelColor=1a1c20)](https://github.com/PixelStereo/Kadran/releases/download/v0.1.0/Kadran-macos-x64-v0.1.0.zip)&nbsp;&nbsp;[![Windows Installer](https://img.shields.io/badge/Windows-Installer-2b6fb6?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1c20)](https://github.com/PixelStereo/Kadran/releases/download/v0.1.0/Kadran-windows-x64-v0.1.0-Setup.exe)
 <!-- release-downloads:end -->
 
 Open Kadran and it opens in your browser (and on any phone, tablet or computer of the network, at the address it shows):
