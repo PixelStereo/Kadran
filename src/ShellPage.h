@@ -19,6 +19,11 @@ html, body { height:100%; margin:0; background:var(--bg); color:var(--text); fon
 #main { flex:1; min-width:0; position:relative; }
 #frame { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--bg); }
 body.resizing #frame { pointer-events:none; }
+body.nosb #side, body.nosb #grip { display:none; }
+#float { position:absolute; left:8px; top:8px; z-index:5; display:flex; gap:6px; opacity:.35; transition:opacity .15s; }
+#float:hover { opacity:1; }
+#float button { width:30px; height:30px; padding:0; border-radius:8px; background:var(--panel2); border:1px solid var(--line); color:var(--text); font-size:15px; cursor:pointer; }
+body:not(.nosb) #float { left:auto; right:8px; top:auto; bottom:8px; }
 .bar { display:flex; flex-wrap:wrap; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); gap:6px; }
 .bar h1 { flex:1; margin:0; font-size:15px; font-weight:600; letter-spacing:.02em; }
 .bar .dot { width:8px; height:8px; border-radius:50%; background:var(--bad); }
@@ -64,7 +69,7 @@ inline constexpr char kBody[] = R"HTML(
     <div id="status"></div>
   </div>
   <div id="grip"></div>
-  <div id="main"><iframe id="frame" src="/control" title="Controls"></iframe></div>
+  <div id="main"><iframe id="frame" src="/control" title="Controls"></iframe><div id="float"><button id="sbtoggle" title="Hide / show the side panel (Cmd/Ctrl+B)">☰</button><button id="fs" title="Full screen">⛶</button></div></div>
 </div>
 <input id="file" type="file" accept=".kadran,application/json" hidden>
 <div id="menu" hidden></div>
@@ -244,6 +249,13 @@ inline constexpr char kScript[] = R"JS(
   const toggleEdit = () => { try { const b = frame.contentDocument.getElementById('edit'); if (b && !b.hidden) b.click(); $('#edit').classList.toggle('on', b && b.classList.contains('on')); } catch (_) {} };
   $('#edit').onclick = toggleEdit;
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); toggleEdit(); } });
+  // The side panel hidden, and the whole window full screen: the controls alone
+  const sidebar = on => { document.body.classList.toggle('nosb', !on); try { localStorage.setItem('kadran-side', on ? '1' : '0'); } catch (_) {} };
+  try { if (localStorage.getItem('kadran-side') === '0') sidebar(false); } catch (_) {}
+  $('#sbtoggle').onclick = () => sidebar(document.body.classList.contains('nosb'));
+  const fullscreen = () => { const d = document, e = d.documentElement; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d); else if (e.requestFullscreen) e.requestFullscreen(); else if (e.webkitRequestFullscreen) e.webkitRequestFullscreen(); };
+  $('#fs').onclick = fullscreen;
+  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); $('#sbtoggle').click(); } });
   const grip = $('#grip');
   grip.onmousedown = e => { e.preventDefault(); grip.classList.add('on'); document.body.classList.add('resizing'); const move = ev => { $('#side').style.width = Math.max(200, Math.min(innerWidth * 0.7, ev.clientX)) + 'px'; }; const up = () => { grip.classList.remove('on'); document.body.classList.remove('resizing'); removeEventListener('mousemove', move); removeEventListener('mouseup', up); }; addEventListener('mousemove', move); addEventListener('mouseup', up); };
   connect();
