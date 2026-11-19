@@ -177,3 +177,15 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Kadran $GITHUB_REF_NAME"
           fi
+
+  # The release is made with the workflow's own token, which does not start the "published" workflow: the README is rewritten from here
+  release-downloads:
+    name: README download links
+    needs: release
+    permissions:
+      contents: write
+    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.16.0
+    with:
+      app: Kadran
+      platforms: "mac,win"
+      pxs-ref: v0.16.0
