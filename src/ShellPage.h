@@ -63,7 +63,7 @@ inline constexpr char kBody[] = R"HTML(
 <div id="app">
   <div id="side">
     <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device by its address">+ Device</button></div>
-    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="about" title="About Kadran">About</button><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
+    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="prefs" title="Preferences: the widgets and sizes of the new controls">Prefs</button><button id="about" title="About Kadran">About</button><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
     <div id="tree"></div>
     <div id="status"></div>
@@ -93,6 +93,7 @@ inline constexpr char kScript[] = R"JS(
       if (m.t === 'devices') { devices = m.list || []; render(); }
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
       else if (m.t === 'about') aboutHtml = m.html;
+      else if (m.t === 'prefs') { prefs = m.prefs; prefOpts = m.options; }
       else if (m.t === 'say') say(m.text);
       else if (m.t === 'confirm') { if (confirm('Add ' + m.n + ' controls, as a ' + m.as + '?')) send({ t: 'addNode', device: m.device, path: m.path, as: m.as, page: m.page, confirmed: true }); }
       else if (m.t === 'file') download(m.name || 'Interface.kadran', JSON.stringify(m.doc, null, 2));
@@ -258,15 +259,53 @@ inline constexpr char kScript[] = R"JS(
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); $('#sbtoggle').click(); } });
   const grip = $('#grip');
   grip.onmousedown = e => { e.preventDefault(); grip.classList.add('on'); document.body.classList.add('resizing'); const move = ev => { $('#side').style.width = Math.max(200, Math.min(innerWidth * 0.7, ev.clientX)) + 'px'; }; const up = () => { grip.classList.remove('on'); document.body.classList.remove('resizing'); removeEventListener('mousemove', move); removeEventListener('mouseup', up); }; addEventListener('mousemove', move); addEventListener('mouseup', up); };
+)JS";
+
+// The preferences: the widget a dropped address becomes, by type, and the size of a new control, by widget
+inline constexpr char kScript2[] = R"JS(
+  let prefs = { widgets: {}, sizes: {} }, prefOpts = null;
+  const typeName = { float: 'Float', int: 'Integer', bool: 'Switch (on / off)', choice: 'Choice', trigger: 'Trigger' };
+  const defSize = { vfader: [2, 5], fader: [4, 2], knob: [3, 3], number: [3, 2], slim: [4, 2], vslim: [1, 5], meter: [1, 5], hmeter: [4, 1], readout: [3, 2], graph: [4, 2], switch: [3, 2], led: [3, 2],
+                    buttons: [6, 2], menu: [6, 2], hold: [3, 2], tap: [3, 2], picker: [3, 2], pad: [5, 5], adsr: [6, 3], multi: [8, 4], hmulti: [6, 5] };
+  $('#prefs').onclick = () => {
+    if (!prefOpts) return;
+    const dlg = el('div'); dlg.id = 'dlg'; const box = el('div'); box.style.cssText = 'width:min(460px,92vw);max-height:84vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px';
+    const widgets = Object.assign({}, prefs.widgets), sizes = JSON.parse(JSON.stringify(prefs.sizes));
+    const save = () => send({ t: 'setPrefs', prefs: { widgets, sizes } });
+    const head = t => { const h = el('div', '', t); h.style.cssText = 'font-weight:600;margin:12px 0 6px'; return h; };
+    const row = (label, ...nodes) => { const r = el('div'); r.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0'; const l = el('span', '', label); l.style.flex = '1'; r.appendChild(l); nodes.forEach(n => r.appendChild(n)); box.appendChild(r); };
+    box.appendChild(el('div', '', 'Preferences')).style.cssText = 'font-size:16px;font-weight:600';
+    box.appendChild(head('Widget of a dropped address'));
+    Object.keys(typeName).forEach(k => {
+      const sel = el('select'); sel.appendChild(Object.assign(el('option', '', 'Automatic'), { value: '' }));
+      (prefOpts.types[k] || []).forEach(w => sel.appendChild(Object.assign(el('option', '', wName[w] || w), { value: w })));
+      sel.value = widgets[k] || ''; sel.onchange = () => { if (sel.value) widgets[k] = sel.value; else delete widgets[k]; save(); };
+      row(typeName[k], sel);
+    });
+    box.appendChild(head('Size of a new control (cells: width × height)'));
+    prefOpts.sizeWidgets.forEach(w => {
+      const d = defSize[w] || [3, 2], cur = sizes[w] || [], mk = i => { const n = el('input'); n.type = 'number'; n.min = 1; n.max = i ? 40 : 12; n.placeholder = String(d[i]); n.value = cur[i] || ''; n.style.width = '56px';
+        n.onchange = () => { const a = [Number(box.querySelector('[data-w="' + w + '0"]').value) || d[0], Number(box.querySelector('[data-w="' + w + '1"]').value) || d[1]]; const blank = !box.querySelector('[data-w="' + w + '0"]').value && !box.querySelector('[data-w="' + w + '1"]').value; if (blank) delete sizes[w]; else sizes[w] = a; save(); };
+        n.dataset.w = w + i; return n; };
+      row(wName[w] || w, mk(0), el('span', '', '×'), mk(1));
+    });
+    const acts = el('div', 'acts'), reset = el('button', '', 'Reset'), close = el('button', 'on', 'Close'); acts.style.marginTop = '12px';
+    reset.onclick = () => { send({ t: 'setPrefs', prefs: { widgets: {}, sizes: {} } }); dlg.remove(); };
+    close.onclick = () => dlg.remove(); acts.appendChild(reset); acts.appendChild(close); box.appendChild(acts); dlg.appendChild(box); document.body.appendChild(dlg);
+    dlg.onclick = e => { if (e.target === dlg) dlg.remove(); };
+  };
   connect();
 })();
 )JS";
+
+// The script is in two parts (a literal stays under 16 KB)
+inline QByteArray script() { return QByteArray(kScript) + kScript2; }
 
 // The page as served, and the policy that lets only its script and style run, and frame the controls page
 inline QByteArray page() {
     return QByteArray("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
                       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Kadran</title><style>") +
-           kStyle + "</style></head><body>" + kBody + "<script>" + kScript + "</script></body></html>";
+           kStyle + "</style></head><body>" + kBody + "<script>" + script() + "</script></body></html>";
 }
 
 } // namespace shell_page

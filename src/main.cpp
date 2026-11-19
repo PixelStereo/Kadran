@@ -111,6 +111,9 @@ int main(int argc, char **argv)
     Explorer explorer;
     KadranServer server(&explorer);
     server.setMaxFrame(16 << 20); // an interface opened from the page
+    // The preferences (default widgets and sizes) are kept between runs
+    QObject::connect(&explorer, &Explorer::prefsChanged, &explorer, [&] { settings.setValue("prefs", QJsonDocument(explorer.prefs()).toJson(QJsonDocument::Compact)); });
+    explorer.setPrefs(QJsonDocument::fromJson(settings.value("prefs").toByteArray()).object());
     const quint16 wanted = quint16(settings.value("port", kDefaultPort).toUInt());
     // The network interface the page is served on: all of them, this computer only, or one address (what a show network is)
     QString listen = settings.value("listen").toString();

@@ -32,6 +32,7 @@ protected:
     void clientGone(QTcpSocket *client) override;
 
 private:
+    QByteArray prefsMessage() const;
     void sendAll(const QByteArray &json);
     void sendDevices(QTcpSocket *client = nullptr);
     void sendTree(quint64 device, QTcpSocket *client = nullptr);

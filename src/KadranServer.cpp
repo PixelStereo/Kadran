@@ -12,11 +12,21 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
     setName(QStringLiteral("Kadran"));
     setPageTitle(QStringLiteral("Kadran"));
     setFrameable(true); // the front page frames the controls page
-    m_csp = policy(shell_page::kScript, shell_page::kStyle, "frame-src 'self'");
+    m_csp = policy(shell_page::script(), shell_page::kStyle, "frame-src 'self'");
     // What changes in the devices is told at the next tick
     connect(explorer, &Explorer::devicesChanged, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::deviceReady, this, [this] { m_dirty = true; });
+    connect(explorer, &Explorer::prefsChanged, this, [this] {
+        setDefaultSizes(m_ex->prefs().value("sizes").toObject());
+        const QByteArray json = prefsMessage();
+        for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
+    });
     connect(explorer, &Explorer::deviceTreeChanged, this, [this] { m_dirty = true; });
+}
+
+QByteArray KadranServer::prefsMessage() const
+{
+    return QJsonDocument(QJsonObject{{"t", "prefs"}, {"prefs", m_ex->prefs()}, {"options", Explorer::prefsOptions()}}).toJson(QJsonDocument::Compact);
 }
 
 QByteArray KadranServer::front() { return shell_page::page(); }
@@ -101,6 +111,7 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         m_shells.insert(client);
         leaveControls(client); // the front page has no controls of its own
         sendText(client, QJsonDocument(QJsonObject{{"t", "about"}, {"html", aboutHtml(QCoreApplication::applicationVersion())}}).toJson(QJsonDocument::Compact));
+        sendText(client, prefsMessage());
         sendDevices(client);
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);
         return true;
@@ -150,6 +161,8 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         const bool done = type == QLatin1String("undo") ? undo() : redo();
         if (done) emit layoutEdited();
         say(client, done ? (type == QLatin1String("undo") ? QStringLiteral("Undone") : QStringLiteral("Redone")) : QStringLiteral("Nothing to %1").arg(type));
+    } else if (type == QLatin1String("setPrefs")) {
+        m_ex->setPrefs(o.value("prefs").toObject());
     } else if (type == QLatin1String("save")) {
         sendText(client, QJsonDocument(QJsonObject{{"t", "file"}, {"name", "Interface.kadran"}, {"doc", m_ex->toJson()}}).toJson(QJsonDocument::Compact));
     } else if (type == QLatin1String("load")) {

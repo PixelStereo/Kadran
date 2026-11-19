@@ -59,6 +59,11 @@ public:
 
     // The widgets a parameter can be shown with: {key, name}, the default first (empty: not a control)
     QList<QPair<QString, QString>> widgetsFor(quint64 deviceId, const QString &path) const;
+    // The preferences: {"widgets": {"float": "vfader", "int": ..., "bool": ..., "choice": ..., "trigger": ...}, "sizes": {"vfader": [w, h], ...}}.
+    // The widget a dragged address becomes when none is chosen, and the size of a new control by widget
+    QJsonObject prefs() const { return m_prefs; }
+    void setPrefs(const QJsonObject &prefs);
+    static QJsonObject prefsOptions(); // what the preferences may hold: the widgets of each type, and the sizes the page gives by default
 
     // The interface, to keep: the page's controls and the devices they show (by name: a device's address changes from one day to the next)
     QJsonObject toJson() const;
@@ -102,6 +107,7 @@ public:
     bool setJson(quint64 scope, const QString &path, const QJsonValue &v) override;
 
 signals:
+    void prefsChanged();
     void devicesChanged();
     void deviceReady(quint64 id);
     void deviceTreeChanged(quint64 id);
@@ -118,6 +124,7 @@ private:
     pxs::oscquery::Discovery m_discovery;
     std::vector<std::unique_ptr<Dev>> m_devices;
     std::vector<pxs::controls::Control> m_controls;
+    QJsonObject m_prefs;
     quint64 m_nextControl = 1, m_nextDevice = 1, m_revision = 1;
     pxs::controls::Server *m_server = nullptr;
 };
