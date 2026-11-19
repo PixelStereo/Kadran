@@ -122,10 +122,9 @@ void Explorer::listenAll(quint64 deviceId)
     Dev *d = device(deviceId);
     if (!d || !d->client) return;
     for (const Control &c : m_controls) {
-        if (c.boundScope != deviceId || c.boundParam.isEmpty()) continue;
+        if (c.boundScope != deviceId || !c.bound()) continue;
         if (c.kind == Control::Kind::Color) continue;
-        d->client->listen(c.boundParam);
-        if (!c.boundParam2.isEmpty()) d->client->listen(c.boundParam2);
+        for (const QString &p : c.boundPaths()) d->client->listen(p);
     }
 }
 
@@ -199,9 +198,8 @@ QJsonObject Explorer::toJson() const
 void Explorer::clearControls()
 {
     for (const Control &c : m_controls)
-        for (const QString &p : {c.boundParam, c.boundParam2})
-            if (!p.isEmpty())
-                if (Dev *d = device(c.boundScope); d && d->client) d->client->ignore(p);
+        for (const QString &p : c.boundPaths())
+            if (Dev *d = device(c.boundScope); d && d->client) d->client->ignore(p);
     m_controls.clear();
     changed();
 }
@@ -209,9 +207,8 @@ void Explorer::clearControls()
 static void unlisten(Explorer &ex, const std::vector<Control> &gone, const std::vector<Control> &kept)
 {
     for (const Control &c : gone)
-        for (const QString &p : {c.boundParam, c.boundParam2}) {
-            if (p.isEmpty()) continue;
-            const bool used = std::any_of(kept.begin(), kept.end(), [&](const Control &o) { return o.boundScope == c.boundScope && (o.boundParam == p || o.boundParam2 == p); });
+        for (const QString &p : c.boundPaths()) {
+            const bool used = std::any_of(kept.begin(), kept.end(), [&](const Control &o) { return o.boundScope == c.boundScope && o.boundPaths().contains(p); });
             if (!used)
                 if (Explorer::Dev *d = ex.device(c.boundScope); d && d->client) d->client->ignore(p);
         }
@@ -320,7 +317,7 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
     for (const QJsonValue &v : list) {
         if (!v.isObject()) continue;
         Control c = Control::fromJson(v.toObject());
-        if (!c.boundParam.isEmpty()) {
+        if (c.bound()) {
             const auto it = scopes.constFind(c.boundScope);
             if (it == scopes.cend()) continue; // a view of a device the file does not give
             c.boundScope = it.value();
@@ -366,7 +363,7 @@ std::vector<Control> Explorer::controls() const
 {
     std::vector<Control> list = m_controls;
     for (Control &c : list)
-        if (!c.boundParam.isEmpty()) controls::fillBound(c, *this);
+        if (c.bound()) controls::fillBound(c, *this);
     return list;
 }
 
@@ -375,7 +372,7 @@ std::optional<Control> Explorer::control(quint64 id) const
     const Control *c = controls::find(m_controls, id);
     if (!c) return std::nullopt;
     Control out = *c;
-    if (!out.boundParam.isEmpty()) controls::fillBound(out, *this);
+    if (out.bound()) controls::fillBound(out, *this);
     return out;
 }
 
@@ -393,7 +390,15 @@ bool Explorer::setPoint(quint64 id, double x, double y)
     if (c && !c->boundParam2.isEmpty()) return controls::setBoundPoint(*c, *this, x, y); // a pad over two parameters
     return controls::setPoint(m_controls, id, x, y, {});
 }
-bool Explorer::setPoints(quint64 id, const std::vector<double> &xy) { return controls::setPoints(m_controls, id, xy, {}); }
+bool Explorer::setPoints(quint64 id, const std::vector<double> &xy)
+{
+    const Control *c = controls::find(m_controls, id);
+    if (c && c->kind == Control::Kind::Points && c->boundScope && !c->balls.empty()) { // balls on parameters: they are set, the points follow what they answer
+        const bool ok = controls::setPoints(m_controls, id, xy, {}); // the points kept as well (a ball with no address has only these)
+        return controls::setBoundPoints(*controls::find(m_controls, id), *this, xy) || ok;
+    }
+    return controls::setPoints(m_controls, id, xy, {});
+}
 bool Explorer::setMulti(quint64 id, const std::vector<double> &v) { return controls::setMulti(m_controls, id, v, {}); }
 bool Explorer::setAdsr(quint64 id, const std::array<double, 4> &v) { return controls::setAdsr(m_controls, id, v, {}); }
 
@@ -413,7 +418,23 @@ bool Explorer::setLayouts(const QHash<quint64, std::array<int, 4>> &places)
 
 bool Explorer::update(quint64 id, const Control &change)
 {
+    const Control *old = controls::find(m_controls, id);
+    if (!old) return false;
+    const QStringList before = old->boundPaths();
+    const quint64 scope = old->boundScope;
     if (!controls::update(m_controls, id, change, makeKey).found) return false;
+    const Control *now = controls::find(m_controls, id);
+    if (now && scope) { // the addresses of a ball can be changed: the new ones are listened to, the ones nothing shows any more are not
+        const QStringList after = now->boundPaths();
+        if (Dev *d = device(scope); d && d->client) {
+            for (const QString &p : after) d->client->listen(p);
+            for (const QString &p : before) {
+                if (after.contains(p)) continue;
+                const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == scope && o.boundPaths().contains(p); });
+                if (!used) d->client->ignore(p);
+            }
+        }
+    }
     changed();
     return true;
 }
@@ -423,12 +444,11 @@ bool Explorer::remove(quint64 id)
     const Control *c = controls::find(m_controls, id);
     if (!c) return false;
     const quint64 scope = c->boundScope;
-    const QString path = c->boundParam, path2 = c->boundParam2;
+    const QStringList paths = c->boundPaths();
     if (!controls::remove(m_controls, id)) return false;
-    if (scope && !path.isEmpty()) { // nothing else shows it: not listened to any more
-        for (const QString &p : {path, path2}) {
-            if (p.isEmpty()) continue;
-            const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == scope && (o.boundParam == p || o.boundParam2 == p); });
+    if (scope && !paths.isEmpty()) { // nothing else shows it: not listened to any more
+        for (const QString &p : paths) {
+            const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == scope && o.boundPaths().contains(p); });
             if (!used)
                 if (Dev *d = device(scope); d && d->client) d->client->ignore(p);
         }

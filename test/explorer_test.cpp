@@ -87,14 +87,26 @@ int main(int argc, char **argv)
     level = 0.5;
     const quint64 pad = ex.addPad(dev, "/mix/level", "/mix/rate");
     CHECK(pad != 0);
-    pump([&] { return std::abs(ex.control(pad)->value - 0.5) < 1e-6; }); // asked for when it was added
+    pump([&] { return ex.control(pad)->points.size() == 1 && std::abs(ex.control(pad)->points[0][0] - 0.5) < 1e-6; }); // asked for when it was added
     auto pc = ex.control(pad);
-    CHECK(pc && pc->kind == pxs::controls::Control::Kind::Pad && std::abs(pc->value - 0.5) < 1e-6);
-    pump([&] { return std::abs(ex.control(pad)->value2 - 0.5) < 1e-6; });
-    CHECK(std::abs(ex.control(pad)->value2 - 0.5) < 1e-6 && pc->boundLabel == "Device:/mix/level, /mix/rate");
-    CHECK(ex.setPoint(pad, 0.25, 0.75));
+    CHECK(pc && pc->kind == pxs::controls::Control::Kind::Points && pc->balls.size() == 1 && pc->balls[0].px == "/mix/level" && pc->balls[0].maxY == 20);
+    pump([&] { return std::abs(ex.control(pad)->points[0][1] - 10) < 1e-6; });
+    CHECK(std::abs(ex.control(pad)->points[0][1] - 10) < 1e-6 && pc->boundLabel == "Device:/mix/level, /mix/rate");
+    CHECK(ex.setPoints(pad, {0.25, 15}));
     pump([&] { return std::abs(rate - 15) < 1e-4; });
     CHECK(std::abs(level - 0.25) < 1e-4 && std::abs(rate - 15) < 1e-4);
+    { // a ball added from the page, on addresses of its own, with a range of its own
+        auto changed = *ex.control(pad);
+        changed.applyProps(QJsonObject{{"balls", QJsonArray{changed.balls[0].toJson(), QJsonObject{{"x", "/mix/rate"}, {"y", "/mix/level"}, {"minX", 0}, {"maxX", 40}}}}});
+        CHECK(ex.update(pad, changed));
+        auto two = ex.control(pad);
+        CHECK(two && two->count == 2 && two->balls[1].px == "/mix/rate" && two->balls[1].maxX == 40 && two->points.size() == 2);
+        CHECK(ex.setPoints(pad, {0.25, 15, 20, 0.5}));
+        pump([&] { return std::abs(rate - 20) < 1e-4; });
+        CHECK(std::abs(rate - 20) < 1e-4 && std::abs(level - 0.5) < 1e-4);
+        ex.setPoints(pad, {0.25, 15, 10, 0.25});
+        pump([&] { return std::abs(rate - 10) < 1e-4; });
+    }
     CHECK(ex.addControl(dev, "/mix/level", "knob") != 0);
     CHECK(ex.controls().back().widget == "knob" && ex.controls().back().boundLabel == "Device:/mix/level");
     const quint64 plain = ex.addControl(dev, "/mix/level", "hold");

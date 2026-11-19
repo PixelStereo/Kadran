@@ -8,6 +8,9 @@
 #include <QApplication>
 #include "About.h"
 #include <QCheckBox>
+#include <QComboBox>
+#include <QNetworkAddressEntry>
+#include <QNetworkInterface>
 #include <QMessageBox>
 #include <QClipboard>
 #include <QDesktopServices>
@@ -53,10 +56,11 @@ void loadInterface(Explorer &ex)
     ex.fromJson(QJsonDocument::fromJson(f.read(32 << 20)).object());
 }
 // Another Kadran already on the wanted port: opening Kadran again only shows its page
-bool kadranListening(quint16 port)
+bool kadranListening(quint16 port, const QString &listen = QString())
 {
     QTcpSocket socket;
-    socket.connectToHost(QHostAddress::LocalHost, port);
+    const bool onlyAddress = !listen.isEmpty() && listen != QLatin1String("127.0.0.1");
+    socket.connectToHost(onlyAddress ? QHostAddress(listen) : QHostAddress(QHostAddress::LocalHost), port);
     if (!socket.waitForConnected(300)) return false;
     socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
     QByteArray reply;
@@ -108,15 +112,22 @@ int main(int argc, char **argv)
     KadranServer server(&explorer);
     server.setMaxFrame(16 << 20); // an interface opened from the page
     const quint16 wanted = quint16(settings.value("port", kDefaultPort).toUInt());
-    if (kadranListening(wanted)) {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("http://127.0.0.1:%1/").arg(wanted)));
+    // The network interface the page is served on: all of them, this computer only, or one address (what a show network is)
+    QString listen = settings.value("listen").toString();
+    const auto host = [&] { return listen.isEmpty() || listen == QLatin1String("127.0.0.1") ? QStringLiteral("127.0.0.1") : listen; };
+    if (kadranListening(wanted, listen)) {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("http://%1:%2/").arg(host()).arg(wanted)));
         return 0;
     }
-    if (!server.start(wanted, QString()) && !server.start(0, QString())) {
-        qWarning("Kadran cannot serve its page: %s", qPrintable(server.status()));
-        return 1;
+    if (!server.start(wanted, QString(), listen) && !server.start(0, QString(), listen)) {
+        listen.clear();
+        settings.remove("listen");
+        if (!server.start(wanted, QString()) && !server.start(0, QString())) {
+            qWarning("Kadran cannot serve its page: %s", qPrintable(server.status()));
+            return 1;
+        }
     }
-    const QString local = QStringLiteral("http://127.0.0.1:%1/").arg(server.port());
+    QString local = QStringLiteral("http://%1:%2/").arg(host()).arg(server.port());
     explorer.startSearch();
     loadInterface(explorer);
 
@@ -138,9 +149,25 @@ int main(int argc, char **argv)
     title->setStyleSheet(QStringLiteral("font-size:26px; font-weight:600;"));
     layout->addWidget(title);
     layout->addWidget(new QLabel(QStringLiteral("The OSCQuery devices of the network, on a page of controls.\nIt opens in your browser, here and on any device of the network:")));
-    QStringList urls = server.urls();
-    if (urls.isEmpty()) urls << local;
-    auto *address = new QLabel(urls.join(QLatin1Char('\n')));
+    auto *network = new QComboBox;
+    network->addItem(QStringLiteral("All network interfaces"), QString());
+    network->addItem(QStringLiteral("This computer only"), QStringLiteral("127.0.0.1"));
+    for (const QNetworkInterface &nif : QNetworkInterface::allInterfaces()) {
+        if (!(nif.flags() & QNetworkInterface::IsUp) || (nif.flags() & QNetworkInterface::IsLoopBack)) continue;
+        for (const QNetworkAddressEntry &e : nif.addressEntries())
+            if (e.ip().protocol() == QAbstractSocket::IPv4Protocol) network->addItem(QStringLiteral("%1 — %2").arg(nif.humanReadableName(), e.ip().toString()), e.ip().toString());
+    }
+    if (const int at = network->findData(listen); at >= 0) network->setCurrentIndex(at);
+    else if (!listen.isEmpty()) { network->addItem(QStringLiteral("%1 (not found now)").arg(listen), listen); network->setCurrentIndex(network->count() - 1); }
+    layout->addWidget(new QLabel(QStringLiteral("Network interface:")));
+    layout->addWidget(network);
+    QStringList urls;
+    const auto addresses = [&] {
+        urls = listen.isEmpty() ? server.urls() : QStringList{QStringLiteral("http://%1:%2/").arg(listen).arg(server.port())};
+        if (urls.isEmpty()) urls << local;
+        return urls.join(QLatin1Char('\n'));
+    };
+    auto *address = new QLabel(addresses());
     address->setTextInteractionFlags(Qt::TextSelectableByMouse);
     address->setStyleSheet(QStringLiteral("font-family:Menlo,Consolas,monospace; padding:8px 0;"));
     layout->addWidget(address);
@@ -159,6 +186,22 @@ int main(int argc, char **argv)
     auto *state = new QLabel;
     state->setStyleSheet(QStringLiteral("color:#8a8a94;"));
     layout->addWidget(state);
+    QObject::connect(network, qOverload<int>(&QComboBox::currentIndexChanged), [&](int) { // the page is served on another interface: same port, same page
+        const QString chosen = network->currentData().toString();
+        if (chosen == listen) return;
+        const quint16 port = server.port();
+        server.stop();
+        if (!server.start(port, QString(), chosen) && !server.start(0, QString(), chosen)) {
+            server.start(port, QString(), listen);
+            network->setCurrentIndex(std::max(0, network->findData(listen)));
+            QMessageBox::warning(&window, QStringLiteral("Kadran"), QStringLiteral("The page cannot be served on this interface."));
+            return;
+        }
+        listen = chosen;
+        settings.setValue("listen", listen);
+        local = QStringLiteral("http://%1:%2/").arg(host()).arg(server.port());
+        address->setText(addresses());
+    });
     QObject::connect(open, &QPushButton::clicked, [&] { QDesktopServices::openUrl(QUrl(local)); });
     QObject::connect(about, &QPushButton::clicked, [&] {
         QMessageBox box(&window);

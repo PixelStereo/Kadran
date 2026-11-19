@@ -216,7 +216,7 @@ int main(int argc, char **argv)
         require(explorer.controls().size() == 1 && explorer.controls()[0].widget == "knob" && explorer.controls()[0].boundLabel == "Device:/mix/level", "a control added with its widget and where it comes from");
         page.sendText("{\"t\":\"add\",\"targets\":" + two + ",\"widget\":\"\",\"pad\":true,\"page\":\"0\"}");
         page.pumpUntil([&] { return explorer.controls().size() == 2; });
-        require(explorer.controls().size() == 2 && explorer.controls()[1].kind == pxs::controls::Control::Kind::Pad, "two numbers make an XY pad");
+        require(explorer.controls().size() == 2 && explorer.controls()[1].kind == pxs::controls::Control::Kind::Points && explorer.controls()[1].balls.size() == 1, "two numbers make an XY pad: a ball on two addresses");
         Client frame; // the controls page, which gets a drop
         require(frame.connectTo(port), "connect");
         require(frame.upgrade("/ws", "http://" + host, host).startsWith("HTTP/1.1 101"), "the controls page opens its WebSocket");
@@ -225,6 +225,19 @@ int main(int argc, char **argv)
         frame.sendText("{\"t\":\"drop\",\"data\":\"" + data + "\",\"page\":\"0\",\"x\":3,\"y\":2}");
         frame.pumpUntil([&] { return explorer.controls().size() == 3; });
         require(explorer.controls().size() == 3, "a drop on the controls page adds the control");
+        { // Physics on the ball of the pad, end to end: held by a spring to the hand, then drawn back to its rest place once let go
+            const quint64 padId = explorer.controls()[1].id;
+            const QByteArray ball = "{\"physics\":{\"mode\":2,\"friction\":10,\"tension\":200,\"attract\":60,\"restX\":0.5,\"restY\":0.5}}";
+            frame.sendText("{\"t\":\"edit\",\"id\":\"" + QByteArray::number(padId) + "\",\"props\":{\"balls\":[" + ball + "]}}");
+            frame.pumpUntil([&] { return explorer.controls()[1].balls[0].physics.mode == 2; });
+            require(explorer.controls()[1].balls[0].physics.mode == 2 && explorer.controls()[1].balls[0].px == "/mix/level", "a ball's physics is set from the page, its addresses kept");
+            frame.sendText("{\"t\":\"points\",\"id\":\"" + QByteArray::number(padId) + "\",\"v\":[0.9,9]}");
+            frame.pumpUntil([&] { return level > 0.8; });
+            require(level > 0.8 && rate > 7, "held by the hand, the ball goes to it through the spring");
+            frame.sendText("{\"t\":\"rel\",\"id\":\"" + QByteArray::number(padId) + "\"}");
+            frame.pumpUntil([&] { return std::abs(level - 0.5) < 0.02 && std::abs(rate - 5) < 0.2; }, 5000);
+            require(std::abs(level - 0.5) < 0.02 && std::abs(rate - 5) < 0.2, "let go, the ball goes back to its rest place and the device follows");
+        }
         page.sendText("{\"t\":\"add\",\"targets\":[{\"device\":99,\"path\":\"/nope\"}]}");
         page.sendText("not json");
         page.pump(100);
