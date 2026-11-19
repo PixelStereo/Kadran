@@ -154,8 +154,21 @@ jobs:
           if-no-files-found: error
 
   package-linux:
-    name: Linux x64
-    runs-on: ubuntu-22.04
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+            qt-host: linux
+            qt-arch: linux_gcc_64
+          # The Raspberry Pi 4 and 5 (64-bit Raspberry Pi OS, glibc 2.36): built on an Ubuntu 22.04 arm64 runner (glibc 2.35)
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            qt-host: linux_arm64
+            qt-arch: linux_gcc_arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,6 +181,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: 6.8.3
+          host: ${{ matrix.qt-host }}
+          arch: ${{ matrix.qt-arch }}
           cache: true
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_TESTS=OFF
       - run: cmake --build build --parallel 3
@@ -182,16 +197,16 @@ jobs:
           ls -l dist
           # The AppImage, then the tar.gz, started with only the system's libraries: what they hold is all they have
           rm -rf "$RUNNER_TEMP/smoke" && mkdir -p "$RUNNER_TEMP/smoke"
-          chmod +x "dist/Kadran-linux-x64-$tag.AppImage"
-          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" APPIMAGE_EXTRACT_AND_RUN=1 "dist/Kadran-linux-x64-$tag.AppImage" --check
-          tar -C "$RUNNER_TEMP/smoke" -xzf "dist/Kadran-linux-x64-$tag.tar.gz"
+          chmod +x "dist/Kadran-linux-${{ matrix.arch }}-$tag.AppImage"
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" APPIMAGE_EXTRACT_AND_RUN=1 "dist/Kadran-linux-${{ matrix.arch }}-$tag.AppImage" --check
+          tar -C "$RUNNER_TEMP/smoke" -xzf "dist/Kadran-linux-${{ matrix.arch }}-$tag.tar.gz"
           env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" "$RUNNER_TEMP/smoke/Kadran-$tag/usr/bin/kadran" --check
       - uses: actions/upload-artifact@v4
         with:
-          name: Kadran-linux-x64
+          name: Kadran-linux-${{ matrix.arch }}
           path: |
-            dist/Kadran-linux-x64-*.AppImage
-            dist/Kadran-linux-x64-*.tar.gz
+            dist/Kadran-linux-${{ matrix.arch }}-*.AppImage
+            dist/Kadran-linux-${{ matrix.arch }}-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -211,7 +226,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          assets=("dist/Kadran-macos-arm64-$GITHUB_REF_NAME.zip" "dist/Kadran-macos-x64-$GITHUB_REF_NAME.zip" "dist/Kadran-windows-x64-$GITHUB_REF_NAME-Setup.exe" "dist/Kadran-linux-x64-$GITHUB_REF_NAME.AppImage" "dist/Kadran-linux-x64-$GITHUB_REF_NAME.tar.gz")
+          assets=("dist/Kadran-macos-arm64-$GITHUB_REF_NAME.zip" "dist/Kadran-macos-x64-$GITHUB_REF_NAME.zip" "dist/Kadran-windows-x64-$GITHUB_REF_NAME-Setup.exe" "dist/Kadran-linux-x64-$GITHUB_REF_NAME.AppImage" "dist/Kadran-linux-x64-$GITHUB_REF_NAME.tar.gz" "dist/Kadran-linux-arm64-$GITHUB_REF_NAME.AppImage" "dist/Kadran-linux-arm64-$GITHUB_REF_NAME.tar.gz")
           for asset in "${assets[@]}"; do test -s "$asset"; done
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
