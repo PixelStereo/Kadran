@@ -1,0 +1,14 @@
+name: Release downloads
+on:
+  release:
+    types: [published, edited, deleted]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  update:
+    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.16.0
+    with:
+      app: Kadran
+      platforms: "mac,win"
+      pxs-ref: v0.16.0

@@ -1,23 +1,33 @@
 # Kadran
 
-Explore the OSCQuery devices of the local network and play them on a page of controls. A Pixel Stereo application, built on [pxs](https://github.com/PixelStereo/pxs).
+**Explore the OSCQuery devices of your network and play them on a page of controls.** A Pixel Stereo application, built on [pxs](https://github.com/PixelStereo/pxs).
 
-- **Devices** (left): found by mDNS, or added by hand (`host:port`). Unfold one to read its namespace.
-- **Page** (right): the same controls page as NyxMap's remote, served to the network with no code. Drag an address onto it, double-click it, or right-click for the widget (fader, encoder, number, switch, buttons…). Two numbers make an XY pad, or two controls.
-- A control is a view of the remote parameter: it follows the device and writes back over OSC. The address is shown on its tile.
-- **Edit mode:** Cmd/Ctrl+E. **File:** Open, Save, Save As (`.kadran`).
+<!-- release-downloads:start -->
+<!-- release-downloads:end -->
+
+Open Kadran and it opens in your browser (and on any phone, tablet or computer of the network, at the address it shows):
+
+- **Devices** (left): found by mDNS, or added by hand (`+ Device`, `host:port`). Unfold one to read its namespace. Filter the addresses with the search field.
+- **Page** (right): drag an address onto it, double-click it, or right-click for the widget (fader, encoder, number, switch, buttons…). Two numbers make an XY pad, or two controls. Select several with Cmd/Ctrl-click or Shift-click.
+- A control is a view of the remote parameter: it follows the device and writes back over OSC. Its address is shown on its tile.
+- **Edit mode:** Cmd/Ctrl+E (or the Edit button): move, resize, restyle, add pages.
+- **Keeping it:** what is on the page is saved as you work and comes back at the next launch. **Save** and **Open** keep named interfaces (`.kadran` files).
+
+The page is served without a code, to the whole network: use it on a network you trust.
 
 ## Build
 
-Qt 6.4 or later with Qt WebEngine, C++17.
+Qt 6.4 or later, C++17.
 
 ```sh
 git clone --recursive https://github.com/PixelStereo/Kadran.git
 cd Kadran
 cmake -S . -B build && cmake --build build
 ctest --test-dir build
-open build/Kadran.app
+open build/Kadran*.app        # macOS; elsewhere run the executable
 ```
+
+`build/kadran_fake_device` is a small OSCQuery device to try it on.
 
 ## Licence
 
