@@ -154,21 +154,8 @@ jobs:
           if-no-files-found: error
 
   package-linux:
-    name: Linux ${{ matrix.arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-22.04
-            qt-host: linux
-            qt-arch: linux_gcc_64
-          # The Raspberry Pi 4 and 5 (64-bit Raspberry Pi OS, glibc 2.36): built on an Ubuntu 22.04 arm64 runner (glibc 2.35)
-          - arch: arm64
-            runner: ubuntu-22.04-arm
-            qt-host: linux_arm64
-            qt-arch: linux_gcc_arm64
-    runs-on: ${{ matrix.runner }}
+    name: Linux x64
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -181,8 +168,6 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: 6.8.3
-          host: ${{ matrix.qt-host }}
-          arch: ${{ matrix.qt-arch }}
           cache: true
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_TESTS=OFF
       - run: cmake --build build --parallel 3
@@ -197,22 +182,64 @@ jobs:
           ls -l dist
           # The AppImage, then the tar.gz, started with only the system's libraries: what they hold is all they have
           rm -rf "$RUNNER_TEMP/smoke" && mkdir -p "$RUNNER_TEMP/smoke"
-          chmod +x "dist/Kadran-linux-${{ matrix.arch }}-$tag.AppImage"
-          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" APPIMAGE_EXTRACT_AND_RUN=1 "dist/Kadran-linux-${{ matrix.arch }}-$tag.AppImage" --check
-          tar -C "$RUNNER_TEMP/smoke" -xzf "dist/Kadran-linux-${{ matrix.arch }}-$tag.tar.gz"
+          chmod +x "dist/Kadran-linux-x64-$tag.AppImage"
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" APPIMAGE_EXTRACT_AND_RUN=1 "dist/Kadran-linux-x64-$tag.AppImage" --check
+          tar -C "$RUNNER_TEMP/smoke" -xzf "dist/Kadran-linux-x64-$tag.tar.gz"
           env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" "$RUNNER_TEMP/smoke/Kadran-$tag/usr/bin/kadran" --check
       - uses: actions/upload-artifact@v4
         with:
-          name: Kadran-linux-${{ matrix.arch }}
+          name: Kadran-linux-x64
           path: |
-            dist/Kadran-linux-${{ matrix.arch }}-*.AppImage
-            dist/Kadran-linux-${{ matrix.arch }}-*.tar.gz
+            dist/Kadran-linux-x64-*.AppImage
+            dist/Kadran-linux-x64-*.tar.gz
+          if-no-files-found: error
+
+  # The Raspberry Pi 4 and 5 (64-bit Raspberry Pi OS = Debian bookworm, glibc 2.36, Qt 6.4): built in a bookworm container on an arm64 runner,
+  # with Debian's own Qt, so that what runs here runs there
+  package-rpi:
+    name: Raspberry Pi (Linux arm64)
+    runs-on: ubuntu-22.04-arm
+    container: debian:bookworm
+    steps:
+      - name: System packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git curl file build-essential cmake ninja-build python3 libgl1-mesa-dev \
+            qt6-base-dev qt6-websockets-dev libqt6websockets6 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfuse2 desktop-file-utils
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DKADRAN_TESTS=OFF
+      - run: cmake --build build --parallel 3
+      - name: Package and try it
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$PWD"
+          tag=dev
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; fi
+          export QMAKE=/usr/lib/aarch64-linux-gnu/qt6/bin/qmake
+          bash scripts/package-linux.sh build dist "$tag"
+          ls -l dist
+          mkdir -p "$RUNNER_TEMP/smoke"
+          chmod +x "dist/Kadran-linux-arm64-$tag.AppImage"
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" APPIMAGE_EXTRACT_AND_RUN=1 "dist/Kadran-linux-arm64-$tag.AppImage" --check
+          tar -C "$RUNNER_TEMP/smoke" -xzf "dist/Kadran-linux-arm64-$tag.tar.gz"
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" "$RUNNER_TEMP/smoke/Kadran-$tag/usr/bin/kadran" --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kadran-linux-arm64
+          path: |
+            dist/Kadran-linux-arm64-*.AppImage
+            dist/Kadran-linux-arm64-*.tar.gz
           if-no-files-found: error
 
   release:
     name: Publish the release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [test, package-macos, package-windows, package-linux]
+    needs: [test, package-macos, package-windows, package-linux, package-rpi]
     runs-on: ubuntu-latest
     permissions:
       contents: write
