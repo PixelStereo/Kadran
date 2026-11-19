@@ -208,11 +208,15 @@ QJsonObject Explorer::prefsOptions()
 }
 
 // What a new control is by default: the smallest, the page's own minimum for its widget (a view 1 × 1, a vertical fader 1 × 3,
-// a knob or a pad 2 × 2, the others 2 × 1), and a number a horizontal slim fader. What the preferences leave out is this.
+// a knob 2 × 2, the others 2 × 1), except the pad, the ADSR and the multi-sliders, a little bigger; and a number is a horizontal slim fader. What the preferences leave out is this.
 static QJsonArray smallest(const QString &widget)
 {
     if (widget == QLatin1String("vfader") || widget == QLatin1String("vslim")) return {1, 3};
-    if (widget == QLatin1String("knob") || widget == QLatin1String("pad")) return {2, 2};
+    if (widget == QLatin1String("knob")) return {2, 2};
+    // A little bigger than their minimum: these are played with several fingers, or read at a glance
+    if (widget == QLatin1String("pad")) return {3, 3};   // the XY pad and the multiball pad
+    if (widget == QLatin1String("adsr")) return {4, 2};
+    if (widget == QLatin1String("multi") || widget == QLatin1String("hmulti")) return {4, 3};
     if (widget == QLatin1String("meter") || widget == QLatin1String("hmeter") || widget == QLatin1String("readout") || widget == QLatin1String("graph") ||
         widget == QLatin1String("led"))
         return {1, 1};
