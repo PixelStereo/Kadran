@@ -170,10 +170,10 @@ int main(int argc, char **argv)
     pump([&] { return back; });
     CHECK(back);
     quint64 padId = 0;
-    for (const auto &c : other.controls()) if (c.boundParam2 == "/mix/rate") padId = c.id;
+    for (const auto &c : other.controls()) if (c.kind == pxs::controls::Control::Kind::Points && !c.balls.empty() && c.balls[0].py == "/mix/rate") padId = c.id;
     CHECK(padId && other.control(padId)->boundScope == other.devices()[0]->id);
-    pump([&] { return std::abs(other.control(padId)->value - 0.25) < 1e-3; });
-    CHECK(std::abs(other.control(padId)->value - 0.25) < 1e-3);
+    pump([&] { return other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3; });
+    CHECK(other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3);
 
     // The page is served on the loopback
     CHECK(ex.serve() && ex.pageUrl().startsWith("http://127.0.0.1:"));
