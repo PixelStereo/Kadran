@@ -26,12 +26,16 @@ QString makeKey(const QString &name, const QStringList &taken, int index)
 
 Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this)
 {
+    m_retry.setInterval(5000); // a device the page shows that is not answering is tried again
+    connect(&m_retry, &QTimer::timeout, this, &Explorer::retry);
+    m_retry.start();
     m_server = new controls::Server(this, this);
     m_server->setName(QStringLiteral("Kadran"));
     m_server->setPageTitle(QStringLiteral("Kadran"));
     connect(&m_discovery, &oscquery::Discovery::deviceFound, this, [this](const oscquery::Device &d) {
         Dev *dev = device(addDevice(d.name, d.address.toString(), d.port));
         dev->online = true;
+        if (dev->client && dev->client->state() == oscquery::Client::State::Failed) openDevice(dev->id); // it came back, maybe elsewhere
         emit devicesChanged();
     });
     connect(&m_discovery, &oscquery::Discovery::deviceLost, this, [this](const oscquery::Device &d) {
@@ -102,6 +106,15 @@ void Explorer::openDevice(quint64 id)
         emit devicesChanged();
     });
     c->open(d->host, d->port);
+}
+
+// The devices the controls need that are not open (not yet found when a saved interface was opened, gone and back): tried again
+void Explorer::retry()
+{
+    for (const auto &d : m_devices) {
+        const bool needed = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &c) { return c.boundScope == d->id; });
+        if (needed && d->client && d->client->state() == oscquery::Client::State::Failed) openDevice(d->id);
+    }
 }
 
 void Explorer::listenAll(quint64 deviceId)
@@ -363,4 +376,77 @@ bool Explorer::setJson(quint64 scope, const QString &path, const QJsonValue &v)
     const oscquery::RemoteNode *n = d->client->tree().find(path);
     if (n && n->type == QLatin1String("N")) return d->client->write(path, {});
     return d->client->write(path, QJsonArray{v});
+}
+
+// The front page
+
+QList<Explorer::Target> Explorer::targetsFromJson(const QJsonArray &list)
+{
+    QList<Target> out;
+    for (const QJsonValue &v : list) {
+        const QJsonObject o = v.toObject();
+        const quint64 device = o.value("device").toVariant().toULongLong();
+        const QString path = o.value("path").toString();
+        if (device && path.startsWith(QLatin1Char('/')) && path.size() < 512 && out.size() < 64) out.append({device, path});
+    }
+    return out;
+}
+
+QString Explorer::addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group)
+{
+    if (targets.isEmpty()) return QString();
+    const auto numeric = [this](const Target &t) {
+        const auto w = widgetsFor(t.device, t.path);
+        return !w.isEmpty() && w.first().first == QLatin1String("vfader");
+    };
+    if (pad && widget.isEmpty() && targets.size() == 2 && targets[0].device == targets[1].device && numeric(targets[0]) && numeric(targets[1]))
+        return addPad(targets[0].device, targets[0].path, targets[1].path, group) ? QStringLiteral("Added an XY pad") : QStringLiteral("These cannot make a pad");
+    int added = 0;
+    for (const Target &t : targets)
+        if (addControl(t.device, t.path, widget, group)) ++added;
+    return added ? QStringLiteral("Added %1 control(s)").arg(added) : QStringLiteral("Not shown as a control");
+}
+
+QJsonArray Explorer::devicesJson() const
+{
+    QJsonArray out;
+    for (const auto &d : m_devices) {
+        QString state = QStringLiteral("idle");
+        if (d->client) {
+            switch (d->client->state()) {
+            case pxs::oscquery::Client::State::Connecting: state = QStringLiteral("connecting"); break;
+            case pxs::oscquery::Client::State::Ready: state = QStringLiteral("ready"); break;
+            case pxs::oscquery::Client::State::Failed: state = QStringLiteral("failed"); break;
+            default: break;
+            }
+        }
+        out.append(QJsonObject{{"id", double(d->id)}, {"name", d->name.isEmpty() ? QStringLiteral("%1:%2").arg(d->host).arg(d->port) : d->name},
+                               {"address", QStringLiteral("%1:%2").arg(d->host).arg(d->port)}, {"online", d->online}, {"state", state}});
+    }
+    return out;
+}
+
+static QJsonObject nodeJson(const Explorer &ex, quint64 device, const pxs::oscquery::RemoteNode &n, int depth)
+{
+    QJsonObject o{{"n", n.name}, {"p", n.path}};
+    if (!n.type.isEmpty()) o["t"] = n.type;
+    if (!n.description.isEmpty()) o["d"] = n.description.left(200);
+    if (n.isLeaf()) {
+        QJsonArray widgets;
+        for (const auto &w : ex.widgetsFor(device, n.path)) widgets.append(w.first);
+        if (!widgets.isEmpty() && (n.access & 2)) o["w"] = widgets;
+    }
+    if (!n.children.empty() && depth < 64) {
+        QJsonArray children;
+        for (const auto &c : n.children) children.append(nodeJson(ex, device, c.second, depth + 1));
+        o["c"] = children;
+    }
+    return o;
+}
+
+QJsonObject Explorer::treeJson(quint64 deviceId) const
+{
+    const Dev *d = device(deviceId);
+    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return {};
+    return nodeJson(*this, deviceId, d->client->tree().root(), 0);
 }

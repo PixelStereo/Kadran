@@ -7,7 +7,10 @@
 #include <pxs/Discovery.h>
 #include <pxs/Server.h>
 
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QObject>
+#include <QTimer>
 #include <memory>
 #include <vector>
 
@@ -37,6 +40,19 @@ public:
     quint64 addControl(quint64 deviceId, const QString &path, const QString &widget = QString(), quint64 group = 0);
     // A pad over two numeric parameters (X, Y)
     quint64 addPad(quint64 deviceId, const QString &pathX, const QString &pathY, quint64 group = 0);
+    // What the front page asks: parameters of a device, to put on a page (`group`: the page). Two numbers of one device make an XY pad (`pad`),
+    // unless a widget is asked for. Returns what to tell the operator
+    struct Target {
+        quint64 device = 0;
+        QString path;
+    };
+    QString addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group = 0);
+    static QList<Target> targetsFromJson(const QJsonArray &list);
+
+    // For the front page: the devices (id, name, state), and a device's namespace (name, address, type tags, the widgets it can take)
+    QJsonArray devicesJson() const;
+    QJsonObject treeJson(quint64 deviceId) const;
+
     // The widgets a parameter can be shown with: {key, name}, the default first (empty: not a control)
     QList<QPair<QString, QString>> widgetsFor(quint64 deviceId, const QString &path) const;
 
@@ -80,6 +96,8 @@ signals:
     void controlsChanged();
 
 private:
+    void retry();
+    QTimer m_retry;
     void changed() { ++m_revision; emit controlsChanged(); }
     void listenAll(quint64 deviceId);
 
