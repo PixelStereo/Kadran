@@ -198,6 +198,89 @@ void Explorer::clearControls()
     changed();
 }
 
+static void unlisten(Explorer &ex, const std::vector<Control> &gone, const std::vector<Control> &kept)
+{
+    for (const Control &c : gone)
+        for (const QString &p : {c.boundParam, c.boundParam2}) {
+            if (p.isEmpty()) continue;
+            const bool used = std::any_of(kept.begin(), kept.end(), [&](const Control &o) { return o.boundScope == c.boundScope && (o.boundParam == p || o.boundParam2 == p); });
+            if (!used)
+                if (Explorer::Dev *d = ex.device(c.boundScope); d && d->client) d->client->ignore(p);
+        }
+}
+
+// What is held by a group, at any depth
+static QSet<quint64> held(const std::vector<Control> &list, quint64 group)
+{
+    QSet<quint64> in;
+    for (bool more = true; more;) {
+        more = false;
+        for (const Control &c : list)
+            if (!in.contains(c.id) && c.group && (c.group == group || in.contains(c.group))) {
+                in.insert(c.id);
+                more = true;
+            }
+    }
+    return in;
+}
+
+quint64 Explorer::addPage(const QString &name)
+{
+    int pages = 0;
+    for (const Control &c : m_controls) pages += c.kind == Control::Kind::Group && c.group == 0;
+    Control page;
+    page.kind = Control::Kind::Group;
+    page.name = name.isEmpty() ? QStringLiteral("Page %1").arg(pages + 1) : name.left(60);
+    const quint64 id = controls::add(m_controls, m_nextControl, page, makeKey);
+    if (id) changed();
+    return id;
+}
+
+// The controls that go with `ids` are taken out of the list, and no longer listened to
+static int takeOut(Explorer &ex, std::vector<Control> &list, const QSet<quint64> &ids)
+{
+    std::vector<Control> gone, kept;
+    for (const Control &c : list) (ids.contains(c.id) ? gone : kept).push_back(c);
+    list = kept;
+    unlisten(ex, gone, kept);
+    return int(gone.size());
+}
+
+int Explorer::removePage(quint64 page)
+{
+    const Control *c = controls::find(m_controls, page);
+    if (!c || c->kind != Control::Kind::Group || c->group != 0) return -1;
+    QSet<quint64> ids = held(m_controls, page);
+    ids.insert(page);
+    const int n = takeOut(*this, m_controls, ids);
+    changed();
+    return n - 1;
+}
+
+int Explorer::clearPage(quint64 page)
+{
+    QSet<quint64> ids;
+    if (page) {
+        ids = held(m_controls, page);
+    } else { // the controls that are on no page
+        for (const Control &c : m_controls)
+            if (!c.group && c.kind != Control::Kind::Group) ids.insert(c.id);
+        for (const Control &c : m_controls)
+            if (c.group && ids.contains(c.group)) ids.insert(c.id);
+    }
+    const int n = takeOut(*this, m_controls, ids);
+    changed();
+    return n;
+}
+
+int Explorer::clearAll(bool onePage)
+{
+    const int n = int(m_controls.size());
+    clearControls();
+    if (onePage) addPage();
+    return n;
+}
+
 bool Explorer::fromJson(const QJsonObject &o, QString *error)
 {
     if (o.value("format").toString() != QLatin1String("kadran")) {

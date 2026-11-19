@@ -129,6 +129,17 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         checkpoint();
         const QString text = m_ex->addTargets(Explorer::targetsFromJson(list), QString(), true, page);
         for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
+    } else if (type == QLatin1String("pages")) { // the pages: add, remove, clear this one, clear all, a new empty interface
+        const QString op = o.value("op").toString();
+        const quint64 page = o.value("page").toString().toULongLong();
+        checkpoint();
+        QString text;
+        if (op == QLatin1String("add")) text = m_ex->addPage(o.value("name").toString()) ? QStringLiteral("Page added") : QStringLiteral("The page is full");
+        else if (op == QLatin1String("remove")) { const int n = m_ex->removePage(page); text = n < 0 ? QStringLiteral("No page to remove") : QStringLiteral("Page removed (%1 controls)").arg(n); }
+        else if (op == QLatin1String("clear")) text = QStringLiteral("%1 controls removed").arg(m_ex->clearPage(page));
+        else if (op == QLatin1String("clearAll")) text = QStringLiteral("%1 controls removed").arg(m_ex->clearAll(false));
+        else if (op == QLatin1String("new")) { m_ex->clearAll(true); text = QStringLiteral("A new, empty interface"); }
+        for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
     } else if (type == QLatin1String("addNode")) {
         node(o.value("device").toDouble(), o.value("path").toString(), o.value("as").toString() == QLatin1String("page"), o.value("page").toString().toULongLong(),
              o.value("confirmed").toBool());

@@ -115,6 +115,21 @@ int main(int argc, char **argv)
         CHECK(ex.restore(before) && ex.controls().size() == before.size());
     }
 
+    // Pages: one added, emptied, removed; all cleared
+    {
+        const size_t start = ex.controls().size();
+        const quint64 page = ex.addPage("Mine");
+        CHECK(page && ex.control(page)->name == "Mine" && ex.control(page)->group == 0);
+        CHECK(ex.addControl(dev, "/mix/level", QString(), page) != 0 && ex.addControl(dev, "/mix/on", QString(), page) != 0);
+        CHECK(ex.clearPage(page) == 2 && ex.controls().size() == start + 1);
+        CHECK(ex.addControl(dev, "/mix/level", QString(), page) != 0);
+        CHECK(ex.removePage(page) == 1 && ex.controls().size() == start);
+        CHECK(ex.removePage(page) == -1);
+        const std::vector<Control> before = ex.controls();
+        CHECK(ex.clearAll(true) == int(before.size()) && ex.controls().size() == 1);
+        CHECK(ex.restore(before) && ex.controls().size() == before.size());
+    }
+
     // The interface is kept and found again
     const QJsonObject saved = ex.toJson();
     CHECK(saved.value("devices").toArray().size() == 1);

@@ -64,6 +64,12 @@ public:
     QJsonObject toJson() const;
     bool fromJson(const QJsonObject &o, QString *error = nullptr); // replaces the page; its devices are opened
     void clearControls();
+    // The pages (the top-level groups): one more, one removed with what it holds, one emptied (page 0: what is on no page), all of it emptied.
+    // The count is how many controls went
+    quint64 addPage(const QString &name = QString());
+    int removePage(quint64 page);
+    int clearPage(quint64 page);
+    int clearAll(bool onePage); // `onePage`: a new, empty interface starts with a page of its own
 
     // The page: served to the network, with no code; this machine's own view uses the loopback
     bool serve();

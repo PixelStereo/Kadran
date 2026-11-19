@@ -58,7 +58,7 @@ inline constexpr char kBody[] = R"HTML(
 <div id="app">
   <div id="side">
     <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device by its address">+ Device</button></div>
-    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
+    <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
     <div id="tree"></div>
     <div id="status"></div>
@@ -201,6 +201,16 @@ inline constexpr char kScript[] = R"JS(
     }
     m.style.left = Math.min(e.clientX, innerWidth - 220) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
   }
+  $('#pages').onclick = e => {
+    e.stopPropagation();
+    const m = $('#menu'); m.textContent = ''; m.hidden = false;
+    const item = (text, fn, cls) => { const d = el('div', cls || '', text); if (fn) d.onclick = () => { closeMenu(); fn(); }; m.appendChild(d); };
+    const ask = (op, text) => () => { if (!text || confirm(text)) send({ t: 'pages', op, page: pageId() }); };
+    item('Add a page', ask('add')); item('Remove this page', ask('remove', 'Remove this page and its controls?'));
+    item('Clear this page', ask('clear', 'Remove all the controls of this page?')); item('Clear all', ask('clearAll', 'Remove all the controls and pages?'));
+    item('New empty interface', ask('new', 'Start a new, empty interface? (Undo brings the old one back.)'));
+    const r = e.currentTarget.getBoundingClientRect(); m.style.left = Math.min(r.left, innerWidth - 220) + 'px'; m.style.top = (r.bottom + 4) + 'px';
+  };
   const closeMenu = () => { $('#menu').hidden = true; };
   document.addEventListener('click', closeMenu); document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
   window.addEventListener('blur', closeMenu);
