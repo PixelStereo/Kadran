@@ -359,11 +359,25 @@ QStringList Explorer::networkUrls() const { return m_server->urls(); }
 
 // Backend
 
+// The reset addresses of what a control is a view of (a device that has them says so: NYXMAP_RESET)
+void Explorer::fillResets(Control &c) const
+{
+    c.resets.clear();
+    const Dev *d = device(c.boundScope);
+    if (!d || !d->client) return;
+    for (const QString &p : c.boundPaths())
+        if (const auto *n = d->client->tree().find(p); n && !n->resetPath.isEmpty() && !c.resets.contains(n->resetPath)) c.resets << n->resetPath;
+}
+
 std::vector<Control> Explorer::controls() const
 {
     std::vector<Control> list = m_controls;
     for (Control &c : list)
-        if (c.bound()) controls::fillBound(c, *this);
+        if (c.bound()) {
+            controls::fillBound(c, *this);
+            fillResets(c);
+        }
+    controls::fillPhysics(list);
     return list;
 }
 
@@ -372,7 +386,15 @@ std::optional<Control> Explorer::control(quint64 id) const
     const Control *c = controls::find(m_controls, id);
     if (!c) return std::nullopt;
     Control out = *c;
-    if (out.bound()) controls::fillBound(out, *this);
+    if (out.bound()) {
+        controls::fillBound(out, *this);
+        fillResets(out);
+    }
+    if (out.physTarget) {
+        std::vector<Control> list = m_controls;
+        controls::fillPhysics(list);
+        if (const Control *filled = controls::find(list, id)) out.value = filled->value;
+    }
     return out;
 }
 
@@ -380,6 +402,11 @@ bool Explorer::setValue(quint64 id, double value)
 {
     const Control *c = controls::find(m_controls, id);
     if (!c || c->kind == Control::Kind::Color || c->kind == Control::Kind::Group || !std::isfinite(value)) return false;
+    if (c->physTarget) { // a view of a physics setting of another control
+        const bool ok = controls::setPhysics(m_controls, id, value);
+        if (ok) emit controlsChanged(); // kept, with no new list for the pages
+        return ok;
+    }
     if (!c->boundParam.isEmpty()) return controls::setBound(*c, *this, value);
     return controls::setValue(m_controls, id, value, {});
 }
@@ -437,6 +464,24 @@ bool Explorer::update(quint64 id, const Control &change)
     }
     changed();
     return true;
+}
+
+quint64 Explorer::add(const Control &control)
+{
+    const quint64 id = controls::add(m_controls, m_nextControl, control, makeKey);
+    if (id) changed();
+    return id;
+}
+
+bool Explorer::reset(quint64 id)
+{
+    const Control *c = controls::find(m_controls, id);
+    if (!c || !c->bound()) return false;
+    Control filled = *c;
+    fillResets(filled);
+    bool any = false;
+    for (const QString &path : filled.resets) any |= setJson(c->boundScope, path, true);
+    return any;
 }
 
 bool Explorer::remove(quint64 id)
@@ -521,12 +566,14 @@ QString Explorer::addTargets(const QList<Target> &targets, const QString &widget
 // The parameters under a node that a control can show, in the order of the namespace
 static void collect(const Explorer &ex, quint64 device, const pxs::oscquery::RemoteNode &n, QStringList &out, int depth)
 {
-    if (n.isLeaf()) {
+    if (n.isLeaf() && n.children.empty()) {
         if (!ex.widgetsFor(device, n.path).isEmpty()) out << n.path;
         return;
     }
     if (depth > 64) return;
-    for (const auto &c : n.children) collect(ex, device, c.second, out, depth + 1);
+    if (n.isLeaf() && !ex.widgetsFor(device, n.path).isEmpty()) out << n.path; // a parameter that has nodes under it (its reset)
+    for (const auto &c : n.children)
+        if (c.second.path != n.resetPath) collect(ex, device, c.second, out, depth + 1);
 }
 
 int Explorer::countNode(quint64 deviceId, const QString &path) const
@@ -599,11 +646,11 @@ static QJsonObject nodeJson(const Explorer &ex, quint64 device, const pxs::oscqu
         for (const auto &w : ex.widgetsFor(device, n.path)) widgets.append(w.first);
         if (!widgets.isEmpty()) o["w"] = widgets;
     }
-    if (!n.children.empty() && depth < 64) {
-        QJsonArray children;
-        for (const auto &c : n.children) children.append(nodeJson(ex, device, c.second, depth + 1));
-        o["c"] = children;
-    }
+    // A parameter's reset is not shown: the controls have a button for it
+    QJsonArray children;
+    for (const auto &c : n.children)
+        if (depth < 64 && c.second.path != n.resetPath) children.append(nodeJson(ex, device, c.second, depth + 1));
+    if (!children.isEmpty()) o["c"] = children;
     return o;
 }
 

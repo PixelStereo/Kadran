@@ -238,6 +238,19 @@ int main(int argc, char **argv)
             frame.pump(1500);
             require(level > 0.8 && level <= 1.0 && rate > 7, "let go, the ball goes on with its push and stops, the device follows");
         }
+        { // A slider on a physics setting of the ball: made from the page, it sets that setting
+            const quint64 padId = explorer.controls()[1].id;
+            const size_t before = explorer.controls().size();
+            frame.sendText("{\"t\":\"physicsWidget\",\"id\":\"" + QByteArray::number(padId) + "\",\"key\":\"1.friction\"}");
+            frame.pumpUntil([&] { return explorer.controls().size() == before + 1; });
+            require(explorer.controls().size() == before + 1 && explorer.controls().back().physTarget == padId, "a widget for a physics setting is made");
+            const quint64 viewId = explorer.controls().back().id;
+            frame.sendText("{\"t\":\"set\",\"id\":\"" + QByteArray::number(viewId) + "\",\"v\":22}");
+            frame.pumpUntil([&] { return std::abs(explorer.control(padId)->balls[0].physics.friction - 22) < 1e-6; });
+            require(std::abs(explorer.control(padId)->balls[0].physics.friction - 22) < 1e-6 && std::abs(explorer.control(viewId)->value - 22) < 1e-6, "the slider sets the ball's friction and shows it");
+            frame.sendText("{\"t\":\"remove\",\"id\":\"" + QByteArray::number(viewId) + "\"}");
+            frame.pumpUntil([&] { return explorer.controls().size() == before; });
+        }
         page.sendText("{\"t\":\"add\",\"targets\":[{\"device\":99,\"path\":\"/nope\"}]}");
         page.sendText("not json");
         page.pump(100);

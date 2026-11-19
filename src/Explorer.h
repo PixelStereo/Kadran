@@ -91,6 +91,8 @@ public:
     bool setLayouts(const QHash<quint64, std::array<int, 4>> &places) override;
     bool update(quint64 id, const pxs::controls::Control &changed) override;
     bool remove(quint64 id) override;
+    quint64 add(const pxs::controls::Control &control) override;
+    bool reset(quint64 id) override; // what a control shows goes back to its default: the device's own reset address
     bool restore(const std::vector<pxs::controls::Control> &controls) override; // undo, redo
 
     // ParameterSource: scope is a device's id
@@ -107,6 +109,7 @@ signals:
     void controlsChanged();
 
 private:
+    void fillResets(pxs::controls::Control &c) const;
     void retry();
     QTimer m_retry;
     void changed() { ++m_revision; emit controlsChanged(); }
