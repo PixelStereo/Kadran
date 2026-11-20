@@ -23,7 +23,6 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
         for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
     });
     connect(explorer, &Explorer::deviceTreeChanged, this, [this] { m_dirty = true; });
-    setSharedPage(true); // one way of seeing: a page shown, a view recalled, is so for every browser
     connect(explorer, &Explorer::viewsChanged, this, [this] {
         const QByteArray json = viewsMessage();
         for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
@@ -42,6 +41,7 @@ void KadranServer::applyPrefs()
     const QJsonObject p = m_ex->prefs();
     setDefaultSizes(p.value("sizes").toObject());
     setPageOptions(p.value("inspector").toString(), p.value("physics").toString());
+    setSharedPage(p.value("pages").toString() != QLatin1String("perScreen"));
     setNameParts(2); // a tile is named by the last two words of its address: mix/level, not level
 }
 

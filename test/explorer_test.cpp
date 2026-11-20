@@ -121,6 +121,11 @@ int main(int argc, char **argv)
         const QJsonObject d = ex.prefs();
         CHECK(d.value("widgets").toObject().value("float").toString() == "slim" && d.value("widgets").toObject().value("int").toString() == "slim");
         CHECK(d.value("inspector").toString() == "always" && d.value("physics").toString() == "knob");
+        CHECK(d.value("pages").toString() == "shared");
+        ex.setPrefs({{"pages", "perScreen"}});
+        CHECK(ex.prefs().value("pages").toString() == "perScreen");
+        ex.setPrefs({{"pages", "nope"}});
+        CHECK(ex.prefs().value("pages").toString() == "shared");
         ex.setPrefs({{"inspector", "onDemand"}, {"physics", "vfader"}, {"widgets", QJsonObject()}});
         CHECK(ex.prefs().value("inspector").toString() == "onDemand" && ex.prefs().value("physics").toString() == "vfader");
         ex.setPrefs({{"inspector", "x"}, {"physics", "bogus"}});
