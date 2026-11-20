@@ -1,4 +1,5 @@
 #include "KadranServer.h"
+#include "Logo.h"
 #include "About.h"
 #include <QCoreApplication>
 #include "ShellPage.h"
@@ -12,7 +13,7 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
     setName(QStringLiteral("Kadran"));
     setPageTitle(QStringLiteral("Kadran"));
     setFrameable(true); // the front page frames the controls page
-    m_csp = policy(shell_page::script(), shell_page::kStyle, "frame-src 'self'");
+    m_csp = policy(shell_page::script(), shell_page::kStyle, "frame-src 'self'; img-src data:");
     // What changes in the devices is told at the next tick
     connect(explorer, &Explorer::devicesChanged, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::deviceReady, this, [this] { m_dirty = true; });
@@ -118,7 +119,7 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
     if (type == QLatin1String("hello")) {
         m_shells.insert(client);
         leaveControls(client); // the front page has no controls of its own
-        sendText(client, QJsonDocument(QJsonObject{{"t", "about"}, {"html", aboutHtml(QCoreApplication::applicationVersion())}}).toJson(QJsonDocument::Compact));
+        sendText(client, QJsonDocument(QJsonObject{{"t", "about"}, {"html", aboutHtml(QCoreApplication::applicationVersion(), QStringLiteral("<img src=\"%1\" width=\"72\" height=\"72\" alt=\"\" style=\"display:block;margin-bottom:8px\">").arg(QString::fromLatin1(logo::dataUri())))}}).toJson(QJsonDocument::Compact));
         sendText(client, prefsMessage());
         sendDevices(client);
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);

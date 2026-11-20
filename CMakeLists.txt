@@ -17,9 +17,17 @@ set_target_properties(kadran_core PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_COD
 target_include_directories(kadran_core PUBLIC src)
 target_link_libraries(kadran_core PUBLIC pxs::oscclient pxs::controls Qt6::Network)
 
-add_executable(Kadran WIN32 MACOSX_BUNDLE src/main.cpp)
+# The icon: in the window (a resource), in the macOS bundle (.icns) and in the Windows executable (.ico)
+set(KADRAN_ICONS src/kadran.qrc)
+if(APPLE)
+    list(APPEND KADRAN_ICONS packaging/kadran.icns)
+    set_source_files_properties(packaging/kadran.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+elseif(WIN32)
+    list(APPEND KADRAN_ICONS packaging/kadran.rc)
+endif()
+add_executable(Kadran WIN32 MACOSX_BUNDLE src/main.cpp ${KADRAN_ICONS})
 target_compile_definitions(Kadran PRIVATE KADRAN_VERSION="${KADRAN_VERSION}")
-set_target_properties(Kadran PROPERTIES AUTOMOC ON OUTPUT_NAME "${KADRAN_APP_NAME}"
+set_target_properties(Kadran PROPERTIES AUTOMOC ON AUTORCC ON MACOSX_BUNDLE_ICON_FILE "kadran.icns" OUTPUT_NAME "${KADRAN_APP_NAME}"
     MACOSX_BUNDLE_GUI_IDENTIFIER "fr.pixelstereo.kadran" MACOSX_BUNDLE_BUNDLE_NAME "Kadran"
     MACOSX_BUNDLE_BUNDLE_VERSION "${KADRAN_VERSION}" MACOSX_BUNDLE_SHORT_VERSION_STRING "${KADRAN_VERSION_NUMERIC}")
 # What the packaging scripts read: the name, the version, the executable

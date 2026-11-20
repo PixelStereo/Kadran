@@ -1,3 +1,5 @@
+<p align="center"><img src="packaging/kadran.svg" width="128" alt="Kadran"></p>
+
 # Kadran
 
 **Explore the OSCQuery devices of your network and play them on a page of controls.** A Pixel Stereo application, built on [pxs](https://github.com/PixelStereo/pxs).
