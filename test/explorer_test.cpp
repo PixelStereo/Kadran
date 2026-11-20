@@ -199,6 +199,30 @@ int main(int argc, char **argv)
     pump([&] { return other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3; });
     CHECK(other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3);
 
+    // The views: a layout kept under a name; the page is the active view
+    {
+        Explorer v;
+        v.addPage("One");
+        CHECK(v.activeView().isEmpty() && v.viewNames().isEmpty());
+        CHECK(v.newView("A") == "A" && v.activeView() == "A");
+        v.addPage("Two"); // changed on the page: changed in the view
+        const size_t two = v.controls().size();
+        CHECK(v.newView("A") == "A 2" && v.activeView() == "A 2"); // a copy, with a name of its own
+        v.addPage("Three");
+        CHECK(v.controls().size() == two + 1);
+        CHECK(v.recallView("A") && v.controls().size() == two && v.activeView() == "A"); // the first one has what it had
+        CHECK(v.recallView("A 2") && v.controls().size() == two + 1);
+        CHECK(!v.recallView("nope"));
+        const QJsonObject kept = v.toJson();
+        Explorer w;
+        CHECK(w.fromJson(kept) && w.viewNames() == QStringList({"A", "A 2"}) && w.activeView() == "A 2" && w.controls().size() == two + 1);
+        CHECK(w.recallView("A") && w.controls().size() == two);
+        CHECK(!w.renameView("A", "A 2") && w.renameView("A", "Front") && w.activeView() == "Front");
+        CHECK(w.deleteView("Front") && w.activeView().isEmpty() && w.viewNames() == QStringList({"A 2"}) && w.controls().size() == two); // the page stays
+        w.clearAll(true);
+        CHECK(w.viewNames().isEmpty());
+    }
+
     // The page is served on the loopback
     CHECK(ex.serve() && ex.pageUrl().startsWith("http://127.0.0.1:"));
 

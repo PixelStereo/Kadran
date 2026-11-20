@@ -246,10 +246,11 @@ void Explorer::setPrefs(const QJsonObject &prefs)
 
 // The interface
 
-QJsonObject Explorer::toJson() const
+// An interface as a document: the devices its controls show (by name) and the controls
+QJsonObject Explorer::interfaceJson(const std::vector<Control> &controls) const
 {
     QJsonArray devices, list;
-    for (const Control &c : m_controls) {
+    for (const Control &c : controls) {
         if (c.boundScope && !std::any_of(devices.begin(), devices.end(), [&](const QJsonValue &v) { return v.toObject().value("id").toString().toULongLong() == c.boundScope; })) {
             if (const Dev *d = device(c.boundScope))
                 devices.append(QJsonObject{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}});
@@ -257,6 +258,20 @@ QJsonObject Explorer::toJson() const
         list.append(c.toJson());
     }
     return QJsonObject{{"format", "kadran"}, {"version", 1}, {"devices", devices}, {"controls", list}};
+}
+
+QJsonObject Explorer::toJson() const
+{
+    QJsonObject o = interfaceJson(m_controls);
+    QJsonArray views;
+    for (const View &v : m_views) {
+        QJsonObject doc = interfaceJson(v.controls);
+        doc.insert("name", v.name);
+        views.append(doc);
+    }
+    o.insert("views", views);
+    o.insert("view", m_activeView);
+    return o;
 }
 
 void Explorer::clearControls()
@@ -346,11 +361,17 @@ int Explorer::clearAll(bool onePage)
 {
     const int n = int(m_controls.size());
     clearControls();
-    if (onePage) addPage();
+    if (onePage) { // a new interface has no views either
+        m_views.clear();
+        m_activeView.clear();
+        emit viewsChanged();
+        addPage();
+    }
     return n;
 }
 
-bool Explorer::fromJson(const QJsonObject &o, QString *error)
+// A document's controls, with the devices they name: the one known by that name, else one added (offline until it is found)
+bool Explorer::parseInterface(const QJsonObject &o, std::vector<Control> *out, QList<quint64> *devices, QString *error)
 {
     if (o.value("format").toString() != QLatin1String("kadran")) {
         if (error) *error = QStringLiteral("Not a Kadran interface");
@@ -361,7 +382,6 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
         if (error) *error = QStringLiteral("Too many controls");
         return false;
     }
-    // The devices it names: the one known by that name, else one added (offline until it is found)
     QHash<quint64, quint64> scopes; // saved id -> id here
     for (const QJsonValue &v : o.value("devices").toArray()) {
         const QJsonObject d = v.toObject();
@@ -375,7 +395,6 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
         if (!id) id = addDevice(name, d.value("host").toString(), port);
         scopes.insert(saved, id);
     }
-    clearControls();
     std::vector<Control> next;
     quint64 highest = 0;
     for (const QJsonValue &v : list) {
@@ -396,14 +415,113 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
     }
     controls::keyAll(next, makeKey);
     controls::tidyGroups(next);
-    m_controls = std::move(next);
     m_nextControl = std::max(m_nextControl, highest + 1);
+    *out = std::move(next);
+    for (quint64 id : std::as_const(scopes)) devices->append(id);
+    return true;
+}
+
+bool Explorer::fromJson(const QJsonObject &o, QString *error)
+{
+    std::vector<Control> next;
+    QList<quint64> devices;
+    if (!parseInterface(o, &next, &devices, error)) return false;
+    std::vector<View> views;
+    for (const QJsonValue &v : o.value("views").toArray()) {
+        const QJsonObject doc = v.toObject();
+        View view;
+        view.name = doc.value("name").toString();
+        if (view.name.isEmpty() || !parseInterface(doc, &view.controls, &devices, nullptr)) continue;
+        views.push_back(std::move(view));
+    }
+    clearControls();
+    m_controls = std::move(next);
+    m_views = std::move(views);
+    m_activeView = o.value("view").toString();
+    if (viewNames().indexOf(m_activeView) < 0) m_activeView.clear();
     changed();
-    for (quint64 id : std::as_const(scopes)) { // their values come when they answer
+    emit viewsChanged();
+    for (quint64 id : std::as_const(devices)) { // their values come when they answer
         openDevice(id);
         listenAll(id);
     }
     return true;
+}
+
+// The views
+
+void Explorer::changed()
+{
+    ++m_revision;
+    if (!m_activeView.isEmpty()) // the page is the active view
+        for (View &v : m_views)
+            if (v.name == m_activeView) v.controls = m_controls;
+    emit controlsChanged();
+}
+
+QStringList Explorer::viewNames() const
+{
+    QStringList out;
+    for (const View &v : m_views) out << v.name;
+    return out;
+}
+
+QString Explorer::newView(const QString &name)
+{
+    if (m_views.size() >= 64) return QString();
+    QString base = name.trimmed().left(48);
+    if (base.isEmpty()) base = QStringLiteral("View");
+    QString given = base;
+    for (int n = 2; viewNames().contains(given); ++n) given = base + QLatin1Char(' ') + QString::number(n);
+    m_views.push_back({given, m_controls});
+    m_activeView = given;
+    emit viewsChanged();
+    return given;
+}
+
+bool Explorer::recallView(const QString &name)
+{
+    if (name == m_activeView) return true;
+    for (const View &v : m_views)
+        if (v.name == name) {
+            const std::vector<Control> next = v.controls; // a copy: changed() writes the page into the active view
+            m_activeView = name;
+            const std::vector<Control> gone = m_controls;
+            unlisten(*this, gone, next);
+            m_controls = next;
+            changed();
+            for (const auto &d : m_devices) listenAll(d->id);
+            emit viewsChanged();
+            emit viewRecalled();
+            return true;
+        }
+    return false;
+}
+
+bool Explorer::deleteView(const QString &name)
+{
+    for (size_t i = 0; i < m_views.size(); ++i)
+        if (m_views[i].name == name) {
+            m_views.erase(m_views.begin() + long(i));
+            if (m_activeView == name) m_activeView.clear(); // the page stays as it is
+            emit viewsChanged();
+            return true;
+        }
+    return false;
+}
+
+bool Explorer::renameView(const QString &name, const QString &to)
+{
+    const QString clean = to.trimmed().left(48);
+    if (clean.isEmpty() || (clean != name && viewNames().contains(clean))) return false;
+    for (View &v : m_views)
+        if (v.name == name) {
+            v.name = clean;
+            if (m_activeView == name) m_activeView = clean;
+            emit viewsChanged();
+            return true;
+        }
+    return false;
 }
 
 // The page

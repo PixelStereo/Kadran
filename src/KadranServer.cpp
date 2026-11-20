@@ -23,6 +23,17 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
         for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
     });
     connect(explorer, &Explorer::deviceTreeChanged, this, [this] { m_dirty = true; });
+    setSharedPage(true); // one way of seeing: a page shown, a view recalled, is so for every browser
+    connect(explorer, &Explorer::viewsChanged, this, [this] {
+        const QByteArray json = viewsMessage();
+        for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
+    });
+    connect(explorer, &Explorer::viewRecalled, this, [this] { // the view's first page is shown
+        quint64 first = 0;
+        for (const pxs::controls::Control &c : m_ex->controls())
+            if (c.kind == pxs::controls::Control::Kind::Group && !c.group) { first = c.id; break; }
+        setCurrentPage(first);
+    });
     applyPrefs();
 }
 
@@ -32,6 +43,11 @@ void KadranServer::applyPrefs()
     setDefaultSizes(p.value("sizes").toObject());
     setPageOptions(p.value("inspector").toString(), p.value("physics").toString());
     setNameParts(2); // a tile is named by the last two words of its address: mix/level, not level
+}
+
+QByteArray KadranServer::viewsMessage() const
+{
+    return QJsonDocument(QJsonObject{{"t", "views"}, {"list", QJsonArray::fromStringList(m_ex->viewNames())}, {"active", m_ex->activeView()}}).toJson(QJsonDocument::Compact);
 }
 
 QByteArray KadranServer::prefsMessage() const
@@ -122,6 +138,7 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         leaveControls(client); // the front page has no controls of its own
         sendText(client, QJsonDocument(QJsonObject{{"t", "about"}, {"html", aboutHtml(QCoreApplication::applicationVersion(), QStringLiteral("<img src=\"%1\" width=\"72\" height=\"72\" alt=\"\" style=\"display:block;margin-bottom:8px\">").arg(QString::fromLatin1(logo::dataUri())))}}).toJson(QJsonDocument::Compact));
         sendText(client, prefsMessage());
+        sendText(client, viewsMessage());
         sendDevices(client);
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);
         return true;
@@ -171,6 +188,14 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         const bool done = type == QLatin1String("undo") ? undo() : redo();
         if (done) emit layoutEdited();
         say(client, done ? (type == QLatin1String("undo") ? QStringLiteral("Undone") : QStringLiteral("Redone")) : QStringLiteral("Nothing to %1").arg(type));
+    } else if (type == QLatin1String("view")) { // the views: a new one from the page, one recalled, renamed, deleted
+        const QString op = o.value("op").toString(), name = o.value("name").toString();
+        QString text;
+        if (op == QLatin1String("new")) { const QString given = m_ex->newView(name); text = given.isEmpty() ? QStringLiteral("Too many views") : QStringLiteral("View \"%1\" made from this page").arg(given); }
+        else if (op == QLatin1String("recall")) { if (!m_ex->recallView(name)) text = QStringLiteral("No such view"); }
+        else if (op == QLatin1String("delete")) { if (m_ex->deleteView(name)) text = QStringLiteral("View deleted"); }
+        else if (op == QLatin1String("rename")) { if (!m_ex->renameView(name, o.value("to").toString())) text = QStringLiteral("That name is taken"); }
+        if (!text.isEmpty()) say(client, text);
     } else if (type == QLatin1String("setPrefs")) {
         m_ex->setPrefs(o.value("prefs").toObject());
     } else if (type == QLatin1String("save")) {
