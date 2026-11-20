@@ -35,6 +35,8 @@ int main(int argc, char **argv)
     auto vuParam = std::make_unique<Parameter>("vu", "Vu", Parameter::Type::Float);
     vuParam->range(0, 1).bind([&] { return QVariant(vu); }, [&](const QVariant &) {}).readOnly();
     tree.add("/mix/vu", std::move(vuParam));
+    tree.addSignal("/in/knob", "f", "A knob of a controller");
+    tree.addSignal("/in/hit", "N");
     pxs::OscService service(&tree, "Device");
     CHECK(service.start(0, 0, false));
 
@@ -162,6 +164,12 @@ int main(int argc, char **argv)
 
     // What cannot be set is shown: a meter; a number that can be set can be shown too
     {
+        // A signal (a stream with no value of its own) is shown, marked, and nothing sets it
+        CHECK(ex.widgetsFor(dev, "/in/knob").first().first == "meter" && ex.widgetsFor(dev, "/in/hit").isEmpty());
+        const quint64 sig = ex.addControl(dev, "/in/knob");
+        CHECK(sig && ex.control(sig)->signal && ex.control(sig)->widget == "meter" && !ex.control(sig)->toJson().value("signal").isUndefined());
+        CHECK(!ex.addControl(dev, "/in/hit"));
+        CHECK(!ex.control(ex.addControl(dev, "/mix/level"))->signal);
         CHECK(ex.widgetsFor(dev, "/mix/vu").first().first == "meter");
         const quint64 view = ex.addControl(dev, "/mix/vu");
         CHECK(view && ex.control(view)->widget == "meter" && std::abs(ex.control(view)->value - 0.4) < 1e-6);

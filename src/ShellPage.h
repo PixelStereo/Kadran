@@ -75,7 +75,7 @@ inline constexpr char kBody[] = R"HTML(
     <div id="status"></div>
   </div>
   <div id="grip"></div>
-  <div id="main"><iframe id="frame" src="/control" title="Controls"></iframe><div id="float"><button id="sbtoggle" title="Hide / show the side panel (Cmd/Ctrl+B)">☰</button><button id="fs" title="Full screen">⛶</button></div></div>
+  <div id="main"><iframe id="frame" src="/control" title="Controls"></iframe><div id="float"><button id="sbtoggle" title="Hide / show the side panel (Cmd/Ctrl+K)">☰</button><button id="fs" title="Full screen">⛶</button></div></div>
 </div>
 <input id="file" type="file" accept=".kadran,application/json" hidden>
 <div id="menu" hidden></div>
@@ -232,7 +232,7 @@ inline constexpr char kScript[] = R"JS(
     const m = $('#menu'); m.textContent = ''; m.hidden = false;
     const item = (text, fn, cls) => { const d = el('div', cls || '', text); if (fn) d.onclick = () => { closeMenu(); fn(); }; m.appendChild(d); };
     const ask = (op, text) => () => { if (!text || confirm(text)) send({ t: 'pages', op, page: pageId() }); };
-    item('Add a page', ask('add')); item('Remove this page', ask('remove', 'Remove this page and its controls?'));
+    item('Add a page', ask('add'));
     item('Clear this page', ask('clear', 'Remove all the controls of this page?')); item('Clear all', ask('clearAll', 'Remove all the controls and pages?'));
     item('New empty interface', ask('new', 'Start a new, empty interface? (Undo brings the old one back.)'));
     const r = e.currentTarget.getBoundingClientRect(); m.style.left = Math.min(r.left, innerWidth - 220) + 'px'; m.style.top = (r.bottom + 4) + 'px';
@@ -268,7 +268,7 @@ inline constexpr char kScript[] = R"JS(
   $('#sbtoggle').onclick = () => sidebar(document.body.classList.contains('nosb'));
   const fullscreen = () => { const d = document, e = d.documentElement; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d); else if (e.requestFullscreen) e.requestFullscreen(); else if (e.webkitRequestFullscreen) e.webkitRequestFullscreen(); };
   $('#fs').onclick = fullscreen;
-  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); $('#sbtoggle').click(); } });
+  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K' || e.key === 'b' || e.key === 'B')) { e.preventDefault(); $('#sbtoggle').click(); } });
   const grip = $('#grip');
   grip.onmousedown = e => { e.preventDefault(); grip.classList.add('on'); document.body.classList.add('resizing'); const move = ev => { $('#side').style.width = Math.max(200, Math.min(innerWidth * 0.7, ev.clientX)) + 'px'; }; const up = () => { grip.classList.remove('on'); document.body.classList.remove('resizing'); removeEventListener('mousemove', move); removeEventListener('mouseup', up); }; addEventListener('mousemove', move); addEventListener('mouseup', up); };
 )JS";

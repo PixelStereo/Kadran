@@ -17,7 +17,8 @@ Open Kadran and it opens in your browser (and on any phone, tablet or computer o
 - **Devices** (left): found by mDNS, or added by hand (`+ Device`, `host:port`). Unfold one to read its namespace. Filter the addresses with the search field.
 - **Page** (right): drag an address onto it, double-click it, or right-click for the widget (fader, encoder, number, switch, buttons…). Two numbers make an XY pad, or two controls. Select several with Cmd/Ctrl-click or Shift-click.
 - A control is a view of the remote parameter: it follows the device and writes back over OSC. Its address is shown on its tile.
-- **Edit mode:** Cmd/Ctrl+E (or the Edit button): move, resize, restyle, add pages.
+- **Edit mode:** Cmd/Ctrl+E (or the Edit button): move, resize, restyle, add pages; a bin beside each page's name deletes it (undo brings it back). Cmd/Ctrl+K hides or shows the device explorer.
+- **Signals:** the streams a device emits (a controller's knob, an incoming message) can be put on the page too: they show as a meter, a readout, a graph or a lamp, marked SIGNAL, and nothing can set them.
 - **Keeping it:** what is on the page is saved as you work and comes back at the next launch. **Save** and **Open** keep named interfaces (`.kadran` files).
 
 The page is served without a code, to the whole network: use it on a network you trust.
