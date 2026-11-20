@@ -239,7 +239,9 @@ void Explorer::setPrefs(const QJsonObject &prefs)
     // The page: the inspector is always there in edit mode (or opens from a tile), and a physics setting becomes an encoder
     const QString inspector = prefs.value("inspector").toString() == QLatin1String("onDemand") ? QStringLiteral("onDemand") : QStringLiteral("always");
     const QString physics = kTypeWidgets.first().second.contains(prefs.value("physics").toString()) ? prefs.value("physics").toString() : QStringLiteral("knob");
-    const QJsonObject clean{{"widgets", widgets}, {"sizes", sizes}, {"inspector", inspector}, {"physics", physics}};
+    // Pages: the same current page on every screen, or one for each screen (the views stay the same for all: a view is the whole layout)
+    const QString pages = prefs.value("pages").toString() == QLatin1String("perScreen") ? QStringLiteral("perScreen") : QStringLiteral("shared");
+    const QJsonObject clean{{"widgets", widgets}, {"sizes", sizes}, {"inspector", inspector}, {"physics", physics}, {"pages", pages}};
     if (clean == m_prefs) return;
     m_prefs = clean;
     emit prefsChanged();

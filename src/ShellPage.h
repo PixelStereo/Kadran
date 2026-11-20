@@ -278,8 +278,8 @@ inline constexpr char kScript2[] = R"JS(
     if (!prefOpts) return;
     const dlg = el('div'); dlg.id = 'dlg'; const box = el('div'); box.style.cssText = 'width:min(460px,92vw);max-height:84vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px';
     const widgets = Object.assign({}, prefs.widgets), sizes = JSON.parse(JSON.stringify(prefs.sizes));
-    let inspector = prefs.inspector || 'always', physics = prefs.physics || 'knob';
-    const save = () => send({ t: 'setPrefs', prefs: { widgets, sizes, inspector, physics } });
+    let inspector = prefs.inspector || 'always', physics = prefs.physics || 'knob', pages = prefs.pages || 'shared';
+    const save = () => send({ t: 'setPrefs', prefs: { widgets, sizes, inspector, physics, pages } });
     const head = t => { const h = el('div', '', t); h.style.cssText = 'font-weight:600;margin:12px 0 6px'; return h; };
     const row = (label, ...nodes) => { const r = el('div'); r.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0'; const l = el('span', '', label); l.style.flex = '1'; r.appendChild(l); nodes.forEach(n => r.appendChild(n)); box.appendChild(r); };
     box.appendChild(el('div', '', 'Preferences')).style.cssText = 'font-size:16px;font-weight:600';
@@ -293,6 +293,7 @@ inline constexpr char kScript2[] = R"JS(
     box.appendChild(head('Controls page'));
     { const si = el('select'); [['always', 'Always shown in edit mode'], ['onDemand', 'Opens from a tile']].forEach(o => si.appendChild(Object.assign(el('option', '', o[1]), { value: o[0] }))); si.value = inspector; si.onchange = () => { inspector = si.value; save(); }; row('Inspector', si);
       const sp = el('select'); (prefOpts.types.float || []).forEach(w => sp.appendChild(Object.assign(el('option', '', wName[w] || w), { value: w }))); sp.value = physics; sp.onchange = () => { physics = sp.value; save(); }; row('Physics widget', sp); }
+    { const sg = el('select'); [['shared', 'The same on every screen'], ['perScreen', 'One for each screen']].forEach(o => sg.appendChild(Object.assign(el('option', '', o[1]), { value: o[0] }))); sg.value = pages; sg.onchange = () => { pages = sg.value; save(); }; row('Current page', sg); }
     box.appendChild(head('Size of a new control (cells: width × height)'));
     prefOpts.sizeWidgets.forEach(w => {
       const d = defSize[w] || [3, 2], cur = sizes[w] || [], mk = i => { const n = el('input'); n.type = 'number'; n.min = 1; n.max = i ? 40 : 12; n.placeholder = String(d[i]); n.value = cur[i] || ''; n.style.width = '56px';
