@@ -31,6 +31,7 @@ void KadranServer::applyPrefs()
     const QJsonObject p = m_ex->prefs();
     setDefaultSizes(p.value("sizes").toObject());
     setPageOptions(p.value("inspector").toString(), p.value("physics").toString());
+    setNameParts(2); // a tile is named by the last two words of its address: mix/level, not level
 }
 
 QByteArray KadranServer::prefsMessage() const

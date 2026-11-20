@@ -267,8 +267,8 @@ jobs:
     needs: release
     permissions:
       contents: write
-    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.31.0
+    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.32.0
     with:
       app: Kadran
       platforms: "mac,win,linux,rpi"
-      pxs-ref: v0.31.0
+      pxs-ref: v0.32.0
