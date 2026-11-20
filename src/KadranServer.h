@@ -33,6 +33,7 @@ protected:
 
 private:
     QByteArray prefsMessage() const;
+    QByteArray viewsMessage() const;
     void applyPrefs(); // the sizes, the inspector and the physics widget of the preferences, given to the page
     void sendAll(const QByteArray &json);
     void sendDevices(QTcpSocket *client = nullptr);

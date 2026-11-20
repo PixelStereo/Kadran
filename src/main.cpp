@@ -143,6 +143,7 @@ int main(int argc, char **argv)
     autosave.setInterval(800);
     QObject::connect(&autosave, &QTimer::timeout, [&] { saveInterface(explorer); });
     QObject::connect(&explorer, &Explorer::controlsChanged, &autosave, qOverload<>(&QTimer::start));
+    QObject::connect(&explorer, &Explorer::viewsChanged, &autosave, qOverload<>(&QTimer::start));
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] { saveInterface(explorer); });
 
     // The window: where to open it
