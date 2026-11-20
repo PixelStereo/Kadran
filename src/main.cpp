@@ -2,12 +2,14 @@
 // (the browser is the interface) and keeps the interface where it was left.
 #include "Explorer.h"
 #include "KadranServer.h"
+#include "OscDevice.h"
 
 #include <pxs/Theme.h>
 
 #include <QApplication>
 #include "About.h"
 #include <QCheckBox>
+#include <QHostInfo>
 #include <QIcon>
 #include <QPixmap>
 #include <QComboBox>
@@ -133,6 +135,13 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    // Kadran is an OSCQuery device too: its pages, its views and the values of its widgets
+    OscDevice osc(&explorer, &server, QStringLiteral("Kadran (%1)").arg(QHostInfo::localHostName()));
+    if (osc.start(quint16(settings.value("oscPort", 47801).toUInt()), quint16(settings.value("oscQueryPort", 47802).toUInt()))) {
+        explorer.setSelfPort(osc.httpPort());
+        settings.setValue("oscPort", osc.oscPort());
+        settings.setValue("oscQueryPort", osc.httpPort());
+    }
     QString local = QStringLiteral("http://%1:%2/").arg(host()).arg(server.port());
     explorer.startSearch();
     loadInterface(explorer);
@@ -178,6 +187,9 @@ int main(int argc, char **argv)
     address->setTextInteractionFlags(Qt::TextSelectableByMouse);
     address->setStyleSheet(QStringLiteral("font-family:Menlo,Consolas,monospace; padding:8px 0;"));
     layout->addWidget(address);
+    auto *oscLine = new QLabel(QStringLiteral("OSC in: udp %1 · OSCQuery: http %2").arg(osc.oscPort()).arg(osc.httpPort()));
+    oscLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(oscLine);
     auto *open = new QPushButton(QStringLiteral("Open in the browser"));
     auto *copy = new QPushButton(QStringLiteral("Copy the address"));
     auto *about = new QPushButton(QStringLiteral("About"));

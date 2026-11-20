@@ -12,10 +12,10 @@ set(PXS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/pxs EXCLUDE_FROM_ALL)
 
 # The model: no widgets, so that it is tested alone
-add_library(kadran_core STATIC src/Explorer.cpp src/Explorer.h src/KadranServer.cpp src/KadranServer.h src/ShellPage.h)
+add_library(kadran_core STATIC src/Explorer.cpp src/Explorer.h src/KadranServer.cpp src/KadranServer.h src/ShellPage.h src/OscDevice.cpp src/OscDevice.h)
 set_target_properties(kadran_core PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_include_directories(kadran_core PUBLIC src)
-target_link_libraries(kadran_core PUBLIC pxs::oscclient pxs::controls Qt6::Network)
+target_link_libraries(kadran_core PUBLIC pxs::oscclient pxs::controls pxs::oscquery pxs::tree Qt6::Network)
 
 # The icon: in the window (a resource), in the macOS bundle (.icns) and in the Windows executable (.ico)
 set(KADRAN_ICONS src/kadran.qrc)
@@ -43,6 +43,9 @@ if(KADRAN_TESTS)
     add_executable(kadran_server_test test/server_test.cpp)
     target_link_libraries(kadran_server_test PRIVATE kadran_core pxs::oscquery pxs::tree)
     add_test(NAME server COMMAND kadran_server_test)
+    add_executable(kadran_osc_test test/osc_device_test.cpp)
+    target_link_libraries(kadran_osc_test PRIVATE kadran_core)
+    add_test(NAME osc_device COMMAND kadran_osc_test)
     # A device to try the application on
     add_executable(kadran_fake_device test/fake_device.cpp)
     target_link_libraries(kadran_fake_device PRIVATE pxs::oscquery pxs::tree Qt6::Core)

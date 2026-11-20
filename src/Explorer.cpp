@@ -36,6 +36,7 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this)
     m_server->setName(QStringLiteral("Kadran"));
     m_server->setPageTitle(QStringLiteral("Kadran"));
     connect(&m_discovery, &oscquery::Discovery::deviceFound, this, [this](const oscquery::Device &d) {
+        if (m_selfPort && d.port == m_selfPort && (d.address.isLoopback() || QNetworkInterface::allAddresses().contains(d.address))) return; // Kadran itself
         Dev *dev = device(addDevice(d.name, d.address.toString(), d.port));
         dev->online = true;
         if (dev->client && dev->client->state() == oscquery::Client::State::Failed) openDevice(dev->id); // it came back, maybe elsewhere
