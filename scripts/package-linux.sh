@@ -16,7 +16,7 @@ mkdir -p "$app/usr/bin" "$app/usr/share/applications" "$app/usr/share/icons/hico
 cp "$build/$name" "$app/usr/bin/kadran"
 cp "$root/packaging/kadran.desktop" "$app/usr/share/applications/kadran.desktop"
 mkdir -p "$app/usr/share/doc/kadran" && cp "$root/LICENSE" "$app/usr/share/doc/kadran/LICENSE.txt"
-python3 "$root/scripts/make-icon.py" "$app/usr/share/icons/hicolor/256x256/apps/kadran.png"
+cp "$root/packaging/kadran.png" "$app/usr/share/icons/hicolor/256x256/apps/kadran.png"
 
 cd "$work"
 base=https://github.com/linuxdeploy

@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="kadran.png">../packaging/kadran.png</file>
+    </qresource>
+</RCC>

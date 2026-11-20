@@ -8,6 +8,8 @@
 #include <QApplication>
 #include "About.h"
 #include <QCheckBox>
+#include <QIcon>
+#include <QPixmap>
 #include <QComboBox>
 #include <QNetworkAddressEntry>
 #include <QNetworkInterface>
@@ -102,6 +104,7 @@ int main(int argc, char **argv)
         }
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Kadran"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/kadran.png")));
     app.setApplicationVersion(QStringLiteral(KADRAN_VERSION));
     app.setOrganizationName(QStringLiteral("Pixel Stereo"));
     app.setOrganizationDomain(QStringLiteral("pixelstereo.fr"));
@@ -210,6 +213,7 @@ int main(int argc, char **argv)
         QMessageBox box(&window);
         box.setWindowTitle(QStringLiteral("About Kadran"));
         box.setTextFormat(Qt::RichText);
+        box.setIconPixmap(QPixmap(QStringLiteral(":/kadran.png")).scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         box.setText(aboutHtml(QCoreApplication::applicationVersion()));
         box.setStandardButtons(QMessageBox::Close);
         box.exec();

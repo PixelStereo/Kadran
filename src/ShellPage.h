@@ -1,4 +1,5 @@
 #pragma once
+#include "Logo.h"
 // Kadran's front page, served at /: the devices of the network and their namespaces on the left, the controls page (pxs, ControlsPage.h) in a
 // frame on the right. An address is dragged from the tree onto the page (HTML5 drag and drop, the page takes the drop and tells the application
 // where), or double-clicked, or put on the page from its menu (which widget; two numbers: an XY pad or two controls).
@@ -308,7 +309,7 @@ inline QByteArray script() { return QByteArray(kScript) + kScript2; }
 // The page as served, and the policy that lets only its script and style run, and frame the controls page
 inline QByteArray page() {
     return QByteArray("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-                      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Kadran</title><style>") +
+                      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Kadran</title><link rel=\"icon\" href=\"") + logo::dataUri() + "\"><style>" +
            kStyle + "</style></head><body>" + kBody + "<script>" + script() + "</script></body></html>";
 }
 
