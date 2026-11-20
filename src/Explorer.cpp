@@ -235,7 +235,10 @@ void Explorer::setPrefs(const QJsonObject &prefs)
         const QJsonArray a = s.value(k).toArray();
         if (a.size() == 2) sizes.insert(k, QJsonArray{std::clamp(a[0].toInt(1), 1, 12), std::clamp(a[1].toInt(1), 1, 40)});
     }
-    const QJsonObject clean{{"widgets", widgets}, {"sizes", sizes}};
+    // The page: the inspector is always there in edit mode (or opens from a tile), and a physics setting becomes an encoder
+    const QString inspector = prefs.value("inspector").toString() == QLatin1String("onDemand") ? QStringLiteral("onDemand") : QStringLiteral("always");
+    const QString physics = kTypeWidgets.first().second.contains(prefs.value("physics").toString()) ? prefs.value("physics").toString() : QStringLiteral("knob");
+    const QJsonObject clean{{"widgets", widgets}, {"sizes", sizes}, {"inspector", inspector}, {"physics", physics}};
     if (clean == m_prefs) return;
     m_prefs = clean;
     emit prefsChanged();

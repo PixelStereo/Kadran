@@ -17,11 +17,19 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
     connect(explorer, &Explorer::devicesChanged, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::deviceReady, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::prefsChanged, this, [this] {
-        setDefaultSizes(m_ex->prefs().value("sizes").toObject());
+        applyPrefs();
         const QByteArray json = prefsMessage();
         for (QTcpSocket *s : std::as_const(m_shells)) sendText(s, json);
     });
     connect(explorer, &Explorer::deviceTreeChanged, this, [this] { m_dirty = true; });
+    applyPrefs();
+}
+
+void KadranServer::applyPrefs()
+{
+    const QJsonObject p = m_ex->prefs();
+    setDefaultSizes(p.value("sizes").toObject());
+    setPageOptions(p.value("inspector").toString(), p.value("physics").toString());
 }
 
 QByteArray KadranServer::prefsMessage() const

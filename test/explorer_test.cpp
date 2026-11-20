@@ -120,6 +120,12 @@ int main(int argc, char **argv)
         // With nothing chosen: a number is a horizontal slim fader, and every widget is its smallest
         const QJsonObject d = ex.prefs();
         CHECK(d.value("widgets").toObject().value("float").toString() == "slim" && d.value("widgets").toObject().value("int").toString() == "slim");
+        CHECK(d.value("inspector").toString() == "always" && d.value("physics").toString() == "knob");
+        ex.setPrefs({{"inspector", "onDemand"}, {"physics", "vfader"}, {"widgets", QJsonObject()}});
+        CHECK(ex.prefs().value("inspector").toString() == "onDemand" && ex.prefs().value("physics").toString() == "vfader");
+        ex.setPrefs({{"inspector", "x"}, {"physics", "bogus"}});
+        CHECK(ex.prefs().value("inspector").toString() == "always" && ex.prefs().value("physics").toString() == "knob");
+        ex.setPrefs({});
         CHECK(d.value("sizes").toObject().value("slim").toArray() == QJsonArray({2, 1}) && d.value("sizes").toObject().value("vfader").toArray() == QJsonArray({1, 3}));
         CHECK(d.value("sizes").toObject().value("knob").toArray() == QJsonArray({2, 2}) && d.value("sizes").toObject().value("led").toArray() == QJsonArray({1, 1}));
         CHECK(d.value("sizes").toObject().value("pad").toArray() == QJsonArray({3, 3}) && d.value("sizes").toObject().value("adsr").toArray() == QJsonArray({4, 2}) &&
