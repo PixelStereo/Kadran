@@ -22,6 +22,22 @@ Open Kadran and it opens in your browser (and on any phone, tablet or computer o
 
 The page is served without a code, to the whole network: use it on a network you trust.
 
+## Views, and driving Kadran by OSC
+
+A **view** is a whole layout (its pages and tiles) kept under a name: *+ View* in the side panel keeps the page as it is, a click shows a view, double-click renames it, right-click deletes it. The page you see is the active view (what you change on it changes in it). The current page and the current view are the same on every browser: showing one shows it everywhere. In edit mode, shift or Cmd/Ctrl-click or a rectangle selects several tiles; Cmd/Ctrl+C, X, V copy, cut and paste them, Delete removes them.
+
+Kadran is an OSCQuery device itself (announced as *Kadran (computer name)*; the ports are in its window, UDP 47801 and HTTP 47802 by default), so Companion, QLab, a script or another Kadran can drive it:
+
+| Address | What |
+|---|---|
+| `/kadran/page` (i) | the page shown, 1 for the first; written, it shows that page |
+| `/kadran/pages/next`, `/kadran/pages/prev`, `/kadran/pages/<name>` | the next page, the previous one, that page |
+| `/kadran/view` (s) | the view shown, by name; written, it shows that view |
+| `/kadran/views/next`, `/kadran/views/prev`, `/kadran/views/<name>` | the same for the views |
+| `/kadran/controls/<page>/<key>` | the value of a widget: a slider (f), a switch (T), a choice (s), an XY pad (ff), a button (an action). Written, it goes to the device the widget shows |
+
+The multi-sliders, the ADSRs, the colors and the balls are not exposed yet.
+
 ## Build
 
 Qt 6.4 or later, C++17.

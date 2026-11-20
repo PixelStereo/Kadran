@@ -28,6 +28,8 @@ public:
     };
 
     explicit Explorer(QObject *parent = nullptr);
+    // Kadran's own OSCQuery service: the one on this port, on this machine, is not listed among the devices
+    void setSelfPort(quint16 port) { m_selfPort = port; }
     ~Explorer() override;
 
     const std::vector<std::unique_ptr<Dev>> &devices() const { return m_devices; }
@@ -144,6 +146,7 @@ private:
     std::vector<std::unique_ptr<Dev>> m_devices;
     std::vector<pxs::controls::Control> m_controls;
     QJsonObject m_prefs;
+    quint16 m_selfPort = 0;
     quint64 m_nextControl = 1, m_nextDevice = 1, m_revision = 1;
     pxs::controls::Server *m_server = nullptr;
 };
