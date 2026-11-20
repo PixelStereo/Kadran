@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     add("/osc/mode", "Mode", Parameter::Type::Choice, [&](Parameter &p) {
         p.choices({"sine", "saw", "square"}).bind([&] { return QVariant(mode); }, [&](const QVariant &v) { mode = v.toString(); });
     });
-    tree.addMessage("/osc/reset", "N", [&](const QVariantList &) { level = 0.5; std::printf("reset\n"); return true; }, "Back to 0.5");
+    tree.addAction("/osc/reset", "N", [&](const QVariantList &) { level = 0.5; std::printf("reset\n"); return true; }, "Back to 0.5");
 
     pxs::OscService service(&tree, QStringLiteral("Demo device"));
     if (!service.start(0, 0, true)) return 1;
