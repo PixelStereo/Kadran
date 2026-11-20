@@ -195,7 +195,7 @@ inline constexpr char kScript[] = R"JS(
   // Putting addresses on the page
   const frame = $('#frame');
   const pageId = () => { try { return String(frame.contentWindow.pxsPageId()); } catch (_) { return '-1'; } };
-  function add(targets, widget, pad) { send({ t: 'add', targets, widget: widget || '', pad: !!pad, page: pageId() }); }
+  function add(targets, widget, pad, macro) { send({ t: 'add', targets, widget: widget || '', pad: !!pad, macro: macro || '', page: pageId() }); }
   function addNode(device, path, as) { send({ t: 'addNode', device, path, as, page: pageId() }); }
   function menuFor(e, list, n, dev) {
     const m = $('#menu'); m.textContent = ''; m.hidden = false;
@@ -212,6 +212,11 @@ inline constexpr char kScript[] = R"JS(
       const numeric = list.every(s => s.w[0] === 'vfader'), same = list.every(s => s.device === list[0].device);
       if (list.length === 2 && numeric && same) { item('Add as an XY pad', () => add(targets, '', true)); item('Add as two', null, 'head'); list[0].w.forEach(w => item('   ' + (wName[w] || w), () => add(targets, w, false))); }
       else { item('Add ' + list.length + ' controls', () => add(targets, '', false)); if (numeric && same) { item('Add all as', null, 'head'); list[0].w.forEach(w => item('   ' + (wName[w] || w), () => add(targets, w, false))); } }
+      item('One control that sends to all of them', null, 'head');
+      item('   A fader (each in its own range)', () => add(targets, '', false, 'slider'));
+      item('   A switch', () => add(targets, '', false, 'switch'));
+      item('   A scene button (once, when pressed)', () => add(targets, '', false, 'button'));
+      item('   A hold button (high when pressed, low when let go)', () => add(targets, '', false, 'hold'));
     }
     m.style.left = Math.min(e.clientX, innerWidth - 220) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
   }

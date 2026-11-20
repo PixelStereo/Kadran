@@ -253,11 +253,13 @@ void Explorer::setPrefs(const QJsonObject &prefs)
 QJsonObject Explorer::interfaceJson(const std::vector<Control> &controls) const
 {
     QJsonArray devices, list;
+    const auto named = [&](quint64 scope) {
+        if (!scope || std::any_of(devices.begin(), devices.end(), [&](const QJsonValue &v) { return v.toObject().value("id").toString().toULongLong() == scope; })) return;
+        if (const Dev *d = device(scope)) devices.append(QJsonObject{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}});
+    };
     for (const Control &c : controls) {
-        if (c.boundScope && !std::any_of(devices.begin(), devices.end(), [&](const QJsonValue &v) { return v.toObject().value("id").toString().toULongLong() == c.boundScope; })) {
-            if (const Dev *d = device(c.boundScope))
-                devices.append(QJsonObject{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}});
-        }
+        named(c.boundScope);
+        for (const controls::Target &t : c.targets) named(t.scope);
         list.append(c.toJson());
     }
     return QJsonObject{{"format", "kadran"}, {"version", 1}, {"devices", devices}, {"controls", list}};
@@ -408,6 +410,11 @@ bool Explorer::parseInterface(const QJsonObject &o, std::vector<Control> *out, Q
             if (it == scopes.cend()) continue; // a view of a device the file does not give
             c.boundScope = it.value();
         }
+        for (size_t i = c.targets.size(); i-- > 0;) { // the devices a macro sends to, as they are here
+            const auto it = scopes.constFind(c.targets[i].scope);
+            if (it == scopes.cend()) c.targets.erase(c.targets.begin() + long(i));
+            else c.targets[i].scope = it.value();
+        }
         highest = std::max(highest, c.id);
         next.push_back(std::move(c));
     }
@@ -557,11 +564,14 @@ void Explorer::fillResets(Control &c) const
 std::vector<Control> Explorer::controls() const
 {
     std::vector<Control> list = m_controls;
-    for (Control &c : list)
+    for (Control &c : list) {
         if (c.bound()) {
             controls::fillBound(c, *this);
             fillResets(c);
         }
+        for (controls::Target &t : c.targets)
+            if (const Dev *d = device(t.scope)) t.label = d->name + QLatin1Char(':') + t.path;
+    }
     controls::fillPhysics(list);
     return list;
 }
@@ -593,14 +603,22 @@ bool Explorer::setValue(quint64 id, double value)
         return ok;
     }
     if (!c->boundParam.isEmpty()) return controls::setBound(*c, *this, value);
-    return controls::setValue(m_controls, id, value, {});
+    const bool kept = controls::setValue(m_controls, id, value, {});
+    if (const Control *m = controls::find(m_controls, id); m && m->macro()) // a macro: its value goes to what it sends to
+        return controls::setTargets(*m, *this, value, 0, m->widget != QLatin1String("tap")) || kept;
+    return kept;
 }
 
 bool Explorer::setPoint(quint64 id, double x, double y)
 {
     const Control *c = controls::find(m_controls, id);
     if (c && !c->boundParam2.isEmpty()) return controls::setBoundPoint(*c, *this, x, y); // a pad over two parameters
-    return controls::setPoint(m_controls, id, x, y, {});
+    const bool kept = controls::setPoint(m_controls, id, x, y, {});
+    if (const Control *m = controls::find(m_controls, id); m && m->macro()) { // a macro pad: X and Y each go to their targets
+        const bool a = controls::setTargets(*m, *this, x, 0), b = controls::setTargets(*m, *this, y, 1);
+        return a || b || kept;
+    }
+    return kept;
 }
 bool Explorer::setPoints(quint64 id, const std::vector<double> &xy)
 {
@@ -733,9 +751,68 @@ QList<Explorer::Target> Explorer::targetsFromJson(const QJsonArray &list)
     return out;
 }
 
-QString Explorer::addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group)
+// The parameter as a target: its own range to begin with
+bool Explorer::makeTarget(const Target &t, controls::Target *out) const
+{
+    ParamInfo info;
+    if (!this->info(t.device, t.path, &info) || !(info.access & ParamInfo::Write)) return false;
+    out->scope = t.device;
+    out->path = t.path;
+    out->outMin = 0;
+    out->outMax = 1;
+    if (info.type == ParamInfo::Type::Float || info.type == ParamInfo::Type::Int) {
+        out->outMin = info.min;
+        out->outMax = info.max > info.min ? info.max : info.min + 1;
+    } else if (info.type == ParamInfo::Type::Choice) {
+        out->outMax = std::max(0, int(info.choices.size()) - 1);
+    }
+    return true;
+}
+
+quint64 Explorer::addMacro(const QList<Target> &targets, const QString &kind, quint64 group)
+{
+    Control c;
+    c.kind = kind == QLatin1String("switch") ? Control::Kind::Toggle : (kind == QLatin1String("button") || kind == QLatin1String("hold")) ? Control::Kind::Button : Control::Kind::Slider;
+    c.min = 0;
+    c.max = 1;
+    c.step = 0.01;
+    c.group = group;
+    if (kind == QLatin1String("button")) c.widget = QStringLiteral("tap");
+    else if (kind == QLatin1String("hold")) c.widget = QStringLiteral("hold");
+    for (const Target &t : targets) {
+        controls::Target n;
+        if (c.targets.size() >= size_t(Control::kTargetsMax) || !makeTarget(t, &n)) continue;
+        c.targets.push_back(n);
+    }
+    if (c.targets.empty()) return 0;
+    const Dev *first = device(c.targets[0].scope);
+    const QString leaf = c.targets[0].path.section(QLatin1Char('/'), -1);
+    c.name = leaf + (c.targets.size() > 1 ? QStringLiteral(" +%1").arg(c.targets.size() - 1) : QString());
+    Q_UNUSED(first)
+    const quint64 id = controls::add(m_controls, m_nextControl, c, makeKey);
+    if (id) changed();
+    return id;
+}
+
+int Explorer::addToMacro(quint64 id, const QList<Target> &targets)
+{
+    Control *c = controls::find(m_controls, id);
+    if (!c || !c->macro()) return 0;
+    int added = 0;
+    for (const Target &t : targets) {
+        controls::Target n;
+        if (c->targets.size() >= size_t(Control::kTargetsMax) || !makeTarget(t, &n)) continue;
+        c->targets.push_back(n);
+        ++added;
+    }
+    if (added) changed();
+    return added;
+}
+
+QString Explorer::addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group, const QString &macro)
 {
     if (targets.isEmpty()) return QString();
+    if (!macro.isEmpty()) return addMacro(targets, macro, group) ? QStringLiteral("Added a macro for %1 parameters").arg(targets.size()) : QStringLiteral("These cannot be sent to");
     const auto numeric = [this](const Target &t) { // a number that can be set
         ParamInfo info;
         return this->info(t.device, t.path, &info) && info.isNumber() && (info.access & ParamInfo::Write);
