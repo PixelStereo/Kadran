@@ -204,6 +204,36 @@ int main(int argc, char **argv)
     pump([&] { return other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3; });
     CHECK(other.control(padId)->points.size() == 2 && std::abs(other.control(padId)->points[0][0] - 0.25) < 1e-3);
 
+    // A macro: one control, several parameters, each in its own range; kept and found again with its devices
+    {
+        const quint64 macro = ex.addMacro({{dev, "/mix/level"}, {dev, "/mix/rate"}, {dev, "/mix/on"}}, "slider");
+        CHECK(macro != 0);
+        const auto m = ex.control(macro);
+        CHECK(m && m->macro() && !m->bound() && m->targets.size() == 3 && m->targets[1].outMax == 20 && m->targets[0].outMax == 1);
+        for (const auto &c : ex.controls()) if (c.id == macro) CHECK(c.targets[1].label == "Device:/mix/rate"); // what the page shows
+        // The range of one is narrowed from the page, another is inverted
+        pxs::controls::Control edited = *m;
+        edited.applyProps(QJsonObject{{"targets", QJsonArray{QJsonObject{{"i", 0}, {"min", 0.2}, {"max", 0.6}}, QJsonObject{{"i", 1}, {"min", 20}, {"max", 0}}, QJsonObject{{"i", 2}}}}});
+        CHECK(ex.update(macro, edited));
+        CHECK(ex.setValue(macro, 0.5));
+        pump([&] { return std::abs(level - 0.4) < 1e-6 && std::abs(rate - 10) < 1e-6; });
+        CHECK(std::abs(level - 0.4) < 1e-6 && std::abs(rate - 10) < 1e-6); // 0.2..0.6 and 20..0 at the middle
+        CHECK(ex.setValue(macro, 1));
+        pump([&] { return std::abs(rate) < 1e-6 && on; });
+        CHECK(std::abs(level - 0.6) < 1e-6 && std::abs(rate) < 1e-6 && on); // the switch from 0.5
+        const quint64 scene = ex.addMacro({{dev, "/mix/level"}}, "button");
+        CHECK(scene && ex.control(scene)->kind == pxs::controls::Control::Kind::Button && ex.control(scene)->widget == "tap");
+        level = 0;
+        CHECK(ex.addToMacro(scene, {{dev, "/mix/rate"}}) == 1 && ex.control(scene)->targets.size() == 2);
+        Explorer back;
+        CHECK(back.fromJson(ex.toJson()));
+        quint64 found = 0;
+        for (const auto &c : back.controls()) if (c.macro() && c.targets.size() == 3) found = c.id;
+        CHECK(found && back.control(found)->targets[0].scope == back.devices()[0]->id && back.control(found)->targets[0].outMin == 0.2);
+        ex.remove(macro);
+        ex.remove(scene);
+    }
+
     // The views: a layout kept under a name; the page is the active view
     {
         Explorer v;

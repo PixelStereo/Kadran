@@ -38,6 +38,10 @@ Kadran is an OSCQuery device itself (announced as *Kadran (computer name)*; the 
 
 The multi-sliders, the ADSRs, the colors and the balls are not exposed yet.
 
+## Macros: one control, several parameters
+
+Select two or more parameters in the tree, right-click, and pick *One control that sends to all of them*: a fader, a switch, a scene button (sends its values once, when pressed) or a hold button (high values when pressed, low ones when let go). Each parameter keeps its own range (its own to begin with), curve and, for a pad, axis; in edit mode the inspector lists them under *Sends to* (From, To, Curve; From above To inverts; the ✕ stops sending to one). Drag another address from the tree onto the macro's tile to send to it too. A macro keeps its own value: nothing is read back from the parameters.
+
 ## Build
 
 Qt 6.4 or later, C++17.

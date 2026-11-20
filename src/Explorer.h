@@ -49,7 +49,13 @@ public:
         quint64 device = 0;
         QString path;
     };
-    QString addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group = 0);
+    QString addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group = 0, const QString &macro = QString());
+    // A macro: one control that sends its value to all of these parameters, each in its own range (the parameter's own, to begin with) and with its own
+    // curve. `kind`: "slider", "switch", "button" (sends its high value once when pressed: a scene) or "hold" (its high value when pressed, its low when let go).
+    // Returns the control's id (0: nothing to send to)
+    quint64 addMacro(const QList<Target> &targets, const QString &kind, quint64 group = 0);
+    // More parameters for a macro; how many were added
+    int addToMacro(quint64 id, const QList<Target> &targets);
     static QList<Target> targetsFromJson(const QJsonArray &list);
     // A node of a device's namespace: all the controls it holds, in a group of the page (`page`: where; 0 the first one) or in a page of
     // their own (`asPage`). `count` is how many controls that makes (the front page asks to confirm a long one)
@@ -129,6 +135,7 @@ signals:
 
 private:
     void fillResets(pxs::controls::Control &c) const;
+    bool makeTarget(const Target &t, pxs::controls::Target *out) const;
     void retry();
     QTimer m_retry;
     void changed();

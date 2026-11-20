@@ -157,11 +157,17 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
     } else if (type == QLatin1String("add")) {
         checkpoint();
         const QString text = m_ex->addTargets(Explorer::targetsFromJson(o.value("targets").toArray()), o.value("widget").toString(), o.value("pad").toBool(),
-                                              o.value("page").toString().toULongLong());
+                                              o.value("page").toString().toULongLong(), o.value("macro").toString());
         say(client, text);
     } else if (type == QLatin1String("drop")) { // from the controls page: its text is what the tree gave
         const QJsonArray list = QJsonDocument::fromJson(o.value("data").toString().toUtf8()).array();
         const quint64 page = o.value("page").toString().toULongLong();
+        if (const quint64 onto = o.value("onto").toString().toULongLong()) { // on a macro's tile: they are sent to as well
+            checkpoint();
+            const int n = m_ex->addToMacro(onto, Explorer::targetsFromJson(list));
+            for (QTcpSocket *s : std::as_const(m_shells)) say(s, n ? QStringLiteral("Now sending to %1 more").arg(n) : QStringLiteral("Nothing to add"));
+            return true;
+        }
         if (list.size() == 1 && list[0].toObject().value("node").toBool()) { // a node, not a parameter: all it holds, in a group or a page
             const QJsonObject n = list[0].toObject();
             node(n.value("device").toDouble(), n.value("path").toString(), n.value("as").toString() == QLatin1String("page"), page, false);
