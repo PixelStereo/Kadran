@@ -265,13 +265,14 @@ inline constexpr char kScript[] = R"JS(
 inline constexpr char kScript2[] = R"JS(
   let prefs = { widgets: {}, sizes: {} }, prefOpts = null;
   const typeName = { float: 'Float', int: 'Integer', bool: 'Switch (on / off)', choice: 'Choice', trigger: 'Trigger' };
-  const defSize = { vfader: [2, 5], fader: [4, 2], knob: [3, 3], number: [3, 2], slim: [4, 2], vslim: [1, 5], meter: [1, 5], hmeter: [4, 1], readout: [3, 2], graph: [4, 2], switch: [3, 2], led: [3, 2],
+  const defSize = { vfader: [2, 5], fader: [4, 2], knob: [2, 2], number: [3, 2], slim: [2, 1], vslim: [1, 5], meter: [1, 5], hmeter: [4, 1], readout: [3, 2], graph: [4, 2], switch: [3, 2], led: [3, 2],
                     buttons: [6, 2], menu: [6, 2], hold: [3, 2], tap: [3, 2], picker: [3, 2], pad: [5, 5], adsr: [6, 3], multi: [8, 4], hmulti: [6, 5] };
   $('#prefs').onclick = () => {
     if (!prefOpts) return;
     const dlg = el('div'); dlg.id = 'dlg'; const box = el('div'); box.style.cssText = 'width:min(460px,92vw);max-height:84vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px';
     const widgets = Object.assign({}, prefs.widgets), sizes = JSON.parse(JSON.stringify(prefs.sizes));
-    const save = () => send({ t: 'setPrefs', prefs: { widgets, sizes } });
+    let inspector = prefs.inspector || 'always', physics = prefs.physics || 'knob';
+    const save = () => send({ t: 'setPrefs', prefs: { widgets, sizes, inspector, physics } });
     const head = t => { const h = el('div', '', t); h.style.cssText = 'font-weight:600;margin:12px 0 6px'; return h; };
     const row = (label, ...nodes) => { const r = el('div'); r.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0'; const l = el('span', '', label); l.style.flex = '1'; r.appendChild(l); nodes.forEach(n => r.appendChild(n)); box.appendChild(r); };
     box.appendChild(el('div', '', 'Preferences')).style.cssText = 'font-size:16px;font-weight:600';
@@ -282,6 +283,9 @@ inline constexpr char kScript2[] = R"JS(
       sel.value = widgets[k] || ''; sel.onchange = () => { if (sel.value) widgets[k] = sel.value; else delete widgets[k]; save(); };
       row(typeName[k], sel);
     });
+    box.appendChild(head('Controls page'));
+    { const si = el('select'); [['always', 'Always shown in edit mode'], ['onDemand', 'Opens from a tile']].forEach(o => si.appendChild(Object.assign(el('option', '', o[1]), { value: o[0] }))); si.value = inspector; si.onchange = () => { inspector = si.value; save(); }; row('Inspector', si);
+      const sp = el('select'); (prefOpts.types.float || []).forEach(w => sp.appendChild(Object.assign(el('option', '', wName[w] || w), { value: w }))); sp.value = physics; sp.onchange = () => { physics = sp.value; save(); }; row('Physics widget', sp); }
     box.appendChild(head('Size of a new control (cells: width × height)'));
     prefOpts.sizeWidgets.forEach(w => {
       const d = defSize[w] || [3, 2], cur = sizes[w] || [], mk = i => { const n = el('input'); n.type = 'number'; n.min = 1; n.max = i ? 40 : 12; n.placeholder = String(d[i]); n.value = cur[i] || ''; n.style.width = '56px';
