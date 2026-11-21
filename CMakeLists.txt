@@ -9,7 +9,7 @@ option(KADRAN_TESTS "Build the tests" ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Network)
 
 set(PXS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/pxs EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/pxs-qt EXCLUDE_FROM_ALL)
 
 # The model: no widgets, so that it is tested alone
 add_library(kadran_core STATIC src/Explorer.cpp src/Explorer.h src/KadranServer.cpp src/KadranServer.h src/ShellPage.h src/OscDevice.cpp src/OscDevice.h)
