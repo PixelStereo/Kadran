@@ -2,7 +2,7 @@
 
 # Kadran
 
-**Explore the OSCQuery devices of your network and play them on a page of controls.** A Pixel Stereo application, built on [pxs](https://github.com/PixelStereo/pxs).
+**Explore the OSCQuery devices of your network and play them on a page of controls.** A Pixel Stereo application, built on [pxs-qt](https://github.com/PixelStereo/pxs-qt).
 
 <!-- release-downloads:start -->
 **LATEST VERSION · [v0.3.1](https://github.com/PixelStereo/Kadran/releases/tag/v0.3.1)**
