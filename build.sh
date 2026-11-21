@@ -84,12 +84,12 @@ fi
 have cmake || fail "cmake is not installed"
 have git || fail "git is not installed"
 
-# --- Sources: the submodule (third_party/pxs)
+# --- Sources: the submodule (third_party/pxs-qt)
 if [[ -d .git ]]; then
   step "Fetching the submodules"
   git submodule update --init --recursive
-elif [[ ! -f third_party/pxs/CMakeLists.txt ]]; then
-  fail "third_party/pxs is empty: clone the repository with git (git clone --recurse-submodules https://github.com/PixelStereo/Kadran.git)"
+elif [[ ! -f third_party/pxs-qt/CMakeLists.txt ]]; then
+  fail "third_party/pxs-qt is empty: clone the repository with git (git clone --recurse-submodules https://github.com/PixelStereo/Kadran.git)"
 fi
 
 # --- Build

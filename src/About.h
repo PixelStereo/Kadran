@@ -8,7 +8,7 @@ inline QString aboutHtml(const QString &version, const QString &logo = QString()
     struct Credit { const char *name, *url, *license; };
     static const Credit credits[] = {
         {"Qt 6", "https://www.qt.io", "LGPL-3.0 — the application and its network code"},
-        {"pxs", "https://github.com/PixelStereo/pxs", "AGPL-3.0 — the controls page, the OSC and OSCQuery client, shared with NyxMap"},
+        {"pxs-qt", "https://github.com/PixelStereo/pxs-qt", "AGPL-3.0 — the controls page, the OSC and OSCQuery client, shared with NyxMap"},
         {"OSCQuery", "https://github.com/Vidvox/OSCQueryProposal", "the protocol of the devices Kadran explores"},
     };
     QString html = QStringLiteral(
