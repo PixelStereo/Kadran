@@ -164,7 +164,7 @@ inline constexpr char kScript[] = R"JS(
     if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)
       row.draggable = true;
       row.ondragstart = e => {
-        const as = e.altKey ? 'page' : 'group';
+        const as = e.altKey ? 'page' : 'ask'; // the page asks: a group of the page, or a page of its own
         e.dataTransfer.setData('application/x-pxs-address', JSON.stringify([{ device: dev, path: n.p, node: true, as }]));
         e.dataTransfer.setData('text/plain', n.p);
         e.dataTransfer.effectAllowed = 'copy';
