@@ -92,7 +92,7 @@ inline constexpr char kScript[] = R"JS(
   const $ = s => document.querySelector(s);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
-  let ws = null, devices = [], nearby = [], trees = {}, openNodes = new Set(), selected = new Map(), filter = '', lastRow = null, statusTimer = 0;
+  let wantFirst = false, ws = null, devices = [], nearby = [], trees = {}, openNodes = new Set(), selected = new Map(), filter = '', lastRow = null, statusTimer = 0;
   const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
   const say = t => { $('#status').textContent = t || ''; clearTimeout(statusTimer); if (t) statusTimer = setTimeout(() => { $('#status').textContent = ''; }, 6000); };
 
@@ -102,7 +102,11 @@ inline constexpr char kScript[] = R"JS(
     ws.onclose = () => { $('#dot').classList.remove('ok'); setTimeout(connect, 1500); };
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
-      if (m.t === 'devices') { devices = m.list || []; nearby = m.nearby || []; render(); }
+      if (m.t === 'devices') {
+        const known = new Set(devices.map(d => d.id)); devices = m.list || []; nearby = m.nearby || [];
+        const fresh = wantFirst && devices.find(d => d.kind === 'osc' && !known.has(d.id));
+        if (fresh) { wantFirst = false; openNodes.add(key(fresh.id, '')); render(); pointDialog(fresh); } else render();
+      }
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
       else if (m.t === 'about') aboutHtml = m.html;
       else if (m.t === 'prefs') { prefs = m.prefs; prefOpts = m.options; }
@@ -294,6 +298,7 @@ inline constexpr char kScriptMid[] = R"JS(
     kind.onchange = sync; sync(); return { kind, name, addr };
   }, f => {
     const hp = hostPort(f.addr.value); if (!hp) { say('Give it as host:port'); return false; }
+    if (f.kind.value === 'osc') { wantFirst = true; setTimeout(() => { wantFirst = false; }, 4000); } // the device that comes next is unfolded, and asked for its first address
     send({ t: 'addDevice', kind: f.kind.value, name: f.name.value.trim(), host: hp.host, port: hp.port });
   });
   const pointDialog = d => dialog('An address ' + d.name + ' takes', form => {
@@ -301,10 +306,12 @@ inline constexpr char kScriptMid[] = R"JS(
     const type = el('select'); [['f', 'Float'], ['i', 'Integer'], ['T', 'On / off'], ['N', 'Trigger (no value)']].forEach(o => { const op = el('option', '', o[1]); op.value = o[0]; type.appendChild(op); });
     type.style.cssText = 'width:100%;padding:8px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:7px;font:inherit'; form.appendChild(type);
     const two = el('div', 'two'); const min = field(two, 'Minimum', 'min 0'), max = field(two, 'Maximum', 'max 1'); form.appendChild(two);
-    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; max.placeholder = type.value === 'i' ? 'max 127' : 'max 1'; }; return { path, type, min, max };
+    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; max.placeholder = type.value === 'i' ? 'max 127' : 'max 1'; };
+    const wl = el('label'); wl.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px'; const w = el('input'); w.type = 'checkbox'; w.checked = true; w.style.width = 'auto'; w.style.margin = '0'; wl.appendChild(w); wl.appendChild(document.createTextNode('Put a control for it on the page')); form.appendChild(wl);
+    return { path, type, min, max, w };
   }, f => {
     if (!f.path.value.trim().startsWith('/')) { say('An address starts with /'); return false; }
-    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? (f.type.value === 'i' ? 127 : 1) : +f.max.value });
+    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? (f.type.value === 'i' ? 127 : 1) : +f.max.value, widget: f.w.checked, page: pageId() });
   });
   const toggleEdit = () => { try { const b = frame.contentDocument.getElementById('edit'); if (b && !b.hidden) b.click(); $('#edit').classList.toggle('on', b && b.classList.contains('on')); } catch (_) {} };
   $('#edit').onclick = toggleEdit;
