@@ -36,6 +36,8 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this), m_oscD
     m_retry.setInterval(5000); // a device the page shows that is not answering is tried again
     connect(&m_retry, &QTimer::timeout, this, &Explorer::retry);
     m_retry.start();
+    m_filterTimer.setInterval(16);
+    connect(&m_filterTimer, &QTimer::timeout, this, &Explorer::filterFrame);
     setPrefs({}); // the defaults, until the saved preferences are read
     m_server = new controls::Server(this, this);
     m_server->setName(QStringLiteral("Kadran"));
@@ -332,6 +334,7 @@ QJsonObject Explorer::toJson() const
 
 void Explorer::clearControls()
 {
+    m_filters.clear();
     for (const Control &c : m_controls)
         for (const QString &p : c.boundPaths())
             if (Dev *d = device(c.boundScope); d && d->client) d->client->ignore(p);
@@ -662,7 +665,43 @@ std::optional<Control> Explorer::control(quint64 id) const
     return out;
 }
 
+// What a tile sends goes through its filters (0..1 of its range), then to the device
 bool Explorer::setValue(quint64 id, double value)
+{
+    const Control *c = controls::find(m_controls, id);
+    if (!c || c->kind == Control::Kind::Color || c->kind == Control::Kind::Group || !std::isfinite(value)) return false;
+    if (!c->physTarget && (c->kind == Control::Kind::Slider || c->kind == Control::Kind::Toggle) && controls::anyFilterOn(c->filters)) {
+        const bool slider = c->kind == Control::Kind::Slider;
+        const double lo = slider ? c->min : 0, span = slider ? c->max - c->min : 1;
+        const std::optional<double> out = m_filters.input(id, c->filters, span > 0 ? (value - lo) / span : 0);
+        if (m_filters.active() && !m_filterTimer.isActive()) {
+            m_filterClock.restart();
+            m_filterTimer.start();
+        }
+        return out ? deliverValue(id, lo + *out * span) : true; // a stage that holds it back: it comes later
+    }
+    m_filters.forget(id);
+    return deliverValue(id, value);
+}
+
+// The frame of the filters that go on by themselves
+void Explorer::filterFrame()
+{
+    const double dt = double(m_filterClock.restart()) / 1000.0;
+    for (const auto &[id, x] : m_filters.step(dt)) {
+        const Control *c = controls::find(m_controls, id);
+        if (!c || !controls::anyFilterOn(c->filters)) {
+            m_filters.forget(id);
+            continue;
+        }
+        const bool slider = c->kind == Control::Kind::Slider;
+        const double lo = slider ? c->min : 0, span = slider ? c->max - c->min : 1;
+        deliverValue(id, lo + x * span);
+    }
+    if (!m_filters.active()) m_filterTimer.stop();
+}
+
+bool Explorer::deliverValue(quint64 id, double value)
 {
     const Control *c = controls::find(m_controls, id);
     if (!c || c->kind == Control::Kind::Color || c->kind == Control::Kind::Group || !std::isfinite(value)) return false;

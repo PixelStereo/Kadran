@@ -5,6 +5,7 @@
 #include <pxs/Client.h>
 #include <pxs/ControlList.h>
 #include <pxs/Discovery.h>
+#include <pxs/Filters.h>
 #include <pxs/RemoteTree.h>
 #include <pxs/Server.h>
 
@@ -14,6 +15,7 @@
 #include <QMap>
 #include <QObject>
 #include <QStringList>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QUdpSocket>
 #include <memory>
@@ -192,6 +194,12 @@ private:
     QUdpSocket m_udp;
     quint16 m_selfOscPort = 0;
     bool m_holdPrune = false;
+    // The filters of the tiles (a slider, a switch): what is set goes through them before it is sent; the ones that move by themselves go on at each frame
+    bool deliverValue(quint64 id, double value);
+    void filterFrame();
+    pxs::controls::FilterRunner m_filters;
+    QTimer m_filterTimer;
+    QElapsedTimer m_filterClock;
     std::vector<pxs::controls::Control> m_controls;
     QJsonObject m_prefs;
     quint16 m_selfPort = 0;
