@@ -32,7 +32,7 @@ int main(int argc, char **argv)
         p.bind([&] { return pxs::core::Value(on); }, [&](const pxs::core::Value &v) { on = v.truthy(); });
     });
     add("/osc/mode", "Mode", pxs::core::tree::Parameter::Type::Choice, [&](pxs::core::tree::Parameter &p) {
-        p.choices({"sine", "saw", "square"}).bind([&] { return pxs::core::Value(mode); }, [&](const pxs::core::Value &v) { mode = QString::fromStdString(v.text()); });
+        p.choices({"sine", "saw", "square"}).bind([&] { return pxs::core::Value(mode.toStdString()); }, [&](const pxs::core::Value &v) { mode = QString::fromStdString(v.text()); });
     });
     tree.addAction("/osc/reset", "N", [&](const pxs::core::ValueList &) { level = 0.5; std::printf("reset\n"); return true; }, "Back to 0.5");
 
