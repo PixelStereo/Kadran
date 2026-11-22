@@ -9,32 +9,32 @@
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    pxs::Tree tree;
+    pxs::core::tree::Tree tree;
     double level = 0.5, rate = 2;
     int steps = 4;
     bool on = true;
     QString mode = "sine";
-    auto add = [&](const char *path, const char *label, Parameter::Type type, auto setup) {
-        auto p = std::make_unique<Parameter>(QString(path).section('/', -1), label, type);
+    auto add = [&](const char *path, const char *label, pxs::core::tree::Parameter::Type type, auto setup) {
+        auto p = std::make_unique<pxs::core::tree::Parameter>(QString(path).section('/', -1).toStdString(), label, type);
         setup(*p);
         tree.add(path, std::move(p));
     };
-    add("/mix/level", "Level", Parameter::Type::Float, [&](Parameter &p) {
-        p.range(0, 1).bind([&] { return QVariant(level); }, [&](const QVariant &v) { level = v.toDouble(); });
+    add("/mix/level", "Level", pxs::core::tree::Parameter::Type::Float, [&](pxs::core::tree::Parameter &p) {
+        p.range(0, 1).bind([&] { return pxs::core::Value(level); }, [&](const pxs::core::Value &v) { level = v.number().value_or(0.0); });
     });
-    add("/mix/rate", "Rate (Hz)", Parameter::Type::Float, [&](Parameter &p) {
-        p.range(0.1, 20).bind([&] { return QVariant(rate); }, [&](const QVariant &v) { rate = v.toDouble(); });
+    add("/mix/rate", "Rate (Hz)", pxs::core::tree::Parameter::Type::Float, [&](pxs::core::tree::Parameter &p) {
+        p.range(0.1, 20).bind([&] { return pxs::core::Value(rate); }, [&](const pxs::core::Value &v) { rate = v.number().value_or(0.0); });
     });
-    add("/mix/steps", "Steps", Parameter::Type::Int, [&](Parameter &p) {
-        p.range(1, 16).bind([&] { return QVariant(steps); }, [&](const QVariant &v) { steps = v.toInt(); });
+    add("/mix/steps", "Steps", pxs::core::tree::Parameter::Type::Int, [&](pxs::core::tree::Parameter &p) {
+        p.range(1, 16).bind([&] { return pxs::core::Value(steps); }, [&](const pxs::core::Value &v) { steps = int(v.number().value_or(0.0)); });
     });
-    add("/mix/on", "On", Parameter::Type::Bool, [&](Parameter &p) {
-        p.bind([&] { return QVariant(on); }, [&](const QVariant &v) { on = v.toBool(); });
+    add("/mix/on", "On", pxs::core::tree::Parameter::Type::Bool, [&](pxs::core::tree::Parameter &p) {
+        p.bind([&] { return pxs::core::Value(on); }, [&](const pxs::core::Value &v) { on = v.truthy(); });
     });
-    add("/osc/mode", "Mode", Parameter::Type::Choice, [&](Parameter &p) {
-        p.choices({"sine", "saw", "square"}).bind([&] { return QVariant(mode); }, [&](const QVariant &v) { mode = v.toString(); });
+    add("/osc/mode", "Mode", pxs::core::tree::Parameter::Type::Choice, [&](pxs::core::tree::Parameter &p) {
+        p.choices({"sine", "saw", "square"}).bind([&] { return pxs::core::Value(mode.toStdString()); }, [&](const pxs::core::Value &v) { mode = QString::fromStdString(v.text()); });
     });
-    tree.addAction("/osc/reset", "N", [&](const QVariantList &) { level = 0.5; std::printf("reset\n"); return true; }, "Back to 0.5");
+    tree.addAction("/osc/reset", "N", [&](const pxs::core::ValueList &) { level = 0.5; std::printf("reset\n"); return true; }, "Back to 0.5");
 
     pxs::OscService service(&tree, QStringLiteral("Demo device"));
     if (!service.start(0, 0, true)) return 1;

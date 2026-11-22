@@ -22,18 +22,18 @@ static void pump(const std::function<bool()> &until, int ms = 3000)
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    pxs::Tree tree;
+    pxs::core::tree::Tree tree;
     double level = 0.25;
     bool on = false;
-    auto p = std::make_unique<Parameter>("level", "Level", Parameter::Type::Float);
-    p->range(0, 1).bind([&] { return QVariant(level); }, [&](const QVariant &v) { level = v.toDouble(); });
+    auto p = std::make_unique<pxs::core::tree::Parameter>("level", "Level", pxs::core::tree::Parameter::Type::Float);
+    p->range(0, 1).bind([&] { return pxs::core::Value(level); }, [&](const pxs::core::Value &v) { level = v.number().value_or(0.0); });
     tree.add("/mix/level", std::move(p));
-    auto q = std::make_unique<Parameter>("on", "On", Parameter::Type::Bool);
-    q->bind([&] { return QVariant(on); }, [&](const QVariant &v) { on = v.toBool(); });
+    auto q = std::make_unique<pxs::core::tree::Parameter>("on", "On", pxs::core::tree::Parameter::Type::Bool);
+    q->bind([&] { return pxs::core::Value(on); }, [&](const pxs::core::Value &v) { on = v.truthy(); });
     tree.add("/mix/on", std::move(q));
     double vu = 0.4;
-    auto vuParam = std::make_unique<Parameter>("vu", "Vu", Parameter::Type::Float);
-    vuParam->range(0, 1).bind([&] { return QVariant(vu); }, [&](const QVariant &) {}).readOnly();
+    auto vuParam = std::make_unique<pxs::core::tree::Parameter>("vu", "Vu", pxs::core::tree::Parameter::Type::Float);
+    vuParam->range(0, 1).bind([&] { return pxs::core::Value(vu); }, [&](const pxs::core::Value &) {}).readOnly();
     tree.add("/mix/vu", std::move(vuParam));
     tree.addSignal("/in/knob", "f", "A knob of a controller");
     tree.addSignal("/in/hit", "N");
@@ -78,9 +78,9 @@ int main(int argc, char **argv)
     CHECK(!ex.remove(id));
 
     // Two parameters make a pad, 0..1 on each, mapped to each one's range
-    auto r = std::make_unique<Parameter>("rate", "Rate", Parameter::Type::Float);
+    auto r = std::make_unique<pxs::core::tree::Parameter>("rate", "Rate", pxs::core::tree::Parameter::Type::Float);
     double rate = 10;
-    r->range(0, 20).bind([&] { return QVariant(rate); }, [&](const QVariant &v) { rate = v.toDouble(); });
+    r->range(0, 20).bind([&] { return pxs::core::Value(rate); }, [&](const pxs::core::Value &v) { rate = v.number().value_or(0.0); });
     tree.add("/mix/rate", std::move(r));
     ready = false;
     ex.openDevice(dev);
