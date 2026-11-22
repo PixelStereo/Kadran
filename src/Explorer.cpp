@@ -764,6 +764,17 @@ bool Explorer::update(quint64 id, const Control &change)
     const quint64 scope = old->boundScope;
     if (!controls::update(m_controls, id, change, makeKey).found) return false;
     const Control *now = controls::find(m_controls, id);
+    if (now && now->boundScope && !now->boundParam.isEmpty() && now->kind == Control::Kind::Slider) { // a plain OSC address has the range the operator gives it
+        if (Dev *od = device(now->boundScope); od && od->kind == Dev::Kind::Osc) {
+            for (Point &pt : od->points) {
+                if (pt.path != now->boundParam || !(now->max > now->min) || (pt.min == now->min && pt.max == now->max)) continue;
+                pt.min = now->min;
+                pt.max = now->max;
+                rebuild(od);
+                emit deviceTreeChanged(od->id);
+            }
+        }
+    }
     if (now && scope) { // the addresses of a ball can be changed: the new ones are listened to, the ones nothing shows any more are not
         const QStringList after = now->boundPaths();
         if (Dev *d = device(scope); d && d->client) {
