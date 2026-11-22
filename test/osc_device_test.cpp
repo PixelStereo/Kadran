@@ -2,6 +2,8 @@
 #include "KadranServer.h"
 #include "OscDevice.h"
 
+#include <pxs/Convert.h>
+
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <cmath>
@@ -23,7 +25,7 @@ static void write(OscDevice &dev, const QString &path, const QString &types, con
     m.address = path;
     m.types = types;
     m.args = args;
-    dev.tree().apply(m);
+    dev.tree().apply(pxs::convert::toCore(m));
 }
 
 int main(int argc, char **argv)
@@ -54,11 +56,11 @@ int main(int argc, char **argv)
     pump([&] { return dev.tree().find("/kadran/controls/live/level") != nullptr; });
 
     // The widgets
-    const pxs::Node *n = dev.tree().find("/kadran/controls/live/level");
+    const pxs::core::tree::Node *n = dev.tree().find("/kadran/controls/live/level");
     CHECK(n && n->type == "f" && n->access == 3);
     write(dev, "/kadran/controls/live/level", "f", {4.5});
     CHECK(std::abs(ex.control(id)->value - 4.5) < 1e-6);
-    CHECK(n->get().value(0).toDouble() == 4.5);
+    CHECK(n->get().front().number().value_or(0.0) == 4.5);
     write(dev, "/kadran/controls/second_page/mode", "s", {"Green"});
     CHECK(ex.control(modeId)->value == 1);
     write(dev, "/kadran/controls/second_page/mode", "i", {0});
@@ -73,7 +75,7 @@ int main(int argc, char **argv)
     write(dev, "/kadran/pages/next", "N", {});
     CHECK(server.currentPage() == second);
     write(dev, "/kadran/pages/live", "N", {});
-    CHECK(server.currentPage() == live && dev.tree().find("/kadran/page")->get().value(0).toInt() == 1);
+    CHECK(server.currentPage() == live && int(dev.tree().find("/kadran/page")->get().front().number().value_or(0.0)) == 1);
 
     // The views
     ex.newView("Front");
@@ -85,7 +87,7 @@ int main(int argc, char **argv)
     write(dev, "/kadran/views/next", "N", {});
     CHECK(ex.activeView() == "Back");
     write(dev, "/kadran/view", "s", {"Front"});
-    CHECK(ex.activeView() == "Front" && dev.tree().find("/kadran/view")->get().value(0).toString() == "Front");
+    CHECK(ex.activeView() == "Front" && dev.tree().find("/kadran/view")->get().front().text() == "Front");
 
     // A widget removed, its node goes
     ex.remove(id);

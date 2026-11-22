@@ -149,19 +149,19 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     try {
         // A device
-        pxs::Tree tree;
+        pxs::core::tree::Tree tree;
         double level = 0.25, rate = 5;
-        auto a = std::make_unique<Parameter>("level", "Level", Parameter::Type::Float);
-        a->range(0, 1).bind([&] { return QVariant(level); }, [&](const QVariant &v) { level = v.toDouble(); });
+        auto a = std::make_unique<pxs::core::tree::Parameter>("level", "Level", pxs::core::tree::Parameter::Type::Float);
+        a->range(0, 1).bind([&] { return pxs::core::Value(level); }, [&](const pxs::core::Value &v) { level = v.number().value_or(0.0); });
         tree.add("/mix/level", std::move(a));
-        auto b = std::make_unique<Parameter>("rate", "Rate", Parameter::Type::Float);
-        b->range(0, 10).bind([&] { return QVariant(rate); }, [&](const QVariant &v) { rate = v.toDouble(); });
+        auto b = std::make_unique<pxs::core::tree::Parameter>("rate", "Rate", pxs::core::tree::Parameter::Type::Float);
+        b->range(0, 10).bind([&] { return pxs::core::Value(rate); }, [&](const pxs::core::Value &v) { rate = v.number().value_or(0.0); });
         tree.add("/mix/rate", std::move(b));
         std::vector<double> many(1500, 0.5); // a namespace of a size a real device has: the message is far over 64 KB
         for (size_t i = 0; i < many.size(); ++i) {
-            auto p = std::make_unique<Parameter>(QStringLiteral("p%1").arg(i), QStringLiteral("P%1").arg(i), Parameter::Type::Float);
-            p->range(0, 1).bind([&many, i] { return QVariant(many[i]); }, [&many, i](const QVariant &v) { many[i] = v.toDouble(); });
-            tree.add(QStringLiteral("/big/p%1").arg(i), std::move(p));
+            auto p = std::make_unique<pxs::core::tree::Parameter>("p" + std::to_string(i), "P" + std::to_string(i), pxs::core::tree::Parameter::Type::Float);
+            p->range(0, 1).bind([&many, i] { return pxs::core::Value(many[i]); }, [&many, i](const pxs::core::Value &v) { many[i] = v.number().value_or(0.0); });
+            tree.add("/big/p" + std::to_string(i), std::move(p));
         }
         pxs::OscService device(&tree, "Device");
         require(device.start(0, 0, false), "the device starts");
