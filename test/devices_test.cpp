@@ -6,6 +6,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QUdpSocket>
 #include <cmath>
@@ -120,6 +121,54 @@ int main(int argc, char **argv)
     CHECK(back.setValue(restored.id, 0.75));
     CHECK(receive(in, &m) && std::abs(m.args[0].toDouble() - 0.75) < 1e-6);
     CHECK(back.fromJson(doc, &why) && back.devices().size() == 1); // again: not duplicated
+
+    // Filters on a tile: what it sends goes through them, a smoothing goes on after the value was set
+    {
+        const auto edit = [&](const QJsonArray &filters) {
+            pxs::controls::Control c = *ex.control(fader);
+            c.applyProps(QJsonObject{{"filters", filters}});
+            return ex.update(fader, c) && ex.control(fader)->filters.size() == filters.size();
+        };
+        CHECK(edit(QJsonArray{QJsonObject{{"type", "clamp"}, {"a", 0.2}, {"b", 0.6}}}));
+        CHECK(ex.setValue(fader, 1.0));
+        CHECK(receive(in, &m) && std::abs(m.args[0].toDouble() - 0.6) < 1e-6); // at once
+        CHECK(edit(QJsonArray{QJsonObject{{"type", "weighted_average"}, {"a", 0.15}}}));
+        CHECK(ex.setValue(fader, 0.0) && receive(in, &m));
+        CHECK(ex.setValue(fader, 1.0));
+        CHECK(receive(in, &m) && m.args[0].toDouble() < 0.5); // it starts behind
+        double top = 0;
+        QElapsedTimer clock;
+        clock.start();
+        while (top < 0.95 && clock.elapsed() < 5000) {
+            pump([&] { return in.hasPendingDatagrams(); }, 200);
+            while (in.hasPendingDatagrams()) {
+                QByteArray d;
+                d.resize(int(in.pendingDatagramSize()));
+                in.readDatagram(d.data(), d.size());
+                std::vector<osc::Message> list;
+                if (osc::decode(d, list) && !list.empty()) top = std::max(top, list[0].args[0].toDouble());
+            }
+        }
+        CHECK(top >= 0.95); // and gets there by itself
+        CHECK(edit(QJsonArray{}));
+        CHECK(ex.setValue(fader, 0.3) && receive(in, &m) && std::abs(m.args[0].toDouble() - 0.3) < 1e-6); // no filter: as before
+    }
+
+    // A macro that sends to two addresses: the one that gives the feedback is chosen
+    {
+        CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));
+        const quint64 macro = ex.addMacro({{beamer, "/layer/1/opacity"}, {beamer, "/gain"}}, "slider");
+        CHECK(macro != 0 && ex.control(macro)->targets.size() == 2 && ex.control(macro)->feedback == -1);
+        CHECK(ex.setValue(macro, 0.25));
+        pxs::controls::Control c = *ex.control(macro);
+        c.applyProps(QJsonObject{{"feedback", 1}}); // /gain, 0..10
+        CHECK(ex.update(macro, c) && ex.control(macro)->feedback == 1);
+        CHECK(ex.setValue(macro, 0.5));
+        CHECK(std::abs(ex.control(macro)->value - 0.5) < 1e-6); // taken back from /gain (5 of 0..10)
+        CHECK(ex.remove(macro));
+        CHECK(ex.removePoint(beamer, "/gain"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
 
     // The controls gone, the device is kept (it is not announced by anything): until it is removed
     CHECK(ex.remove(fader) && ex.remove(toggle) && ex.remove(go));
