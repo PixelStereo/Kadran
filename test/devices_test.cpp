@@ -154,6 +154,20 @@ int main(int argc, char **argv)
         CHECK(ex.setValue(fader, 0.3) && receive(in, &m) && std::abs(m.args[0].toDouble() - 0.3) < 1e-6); // no filter: as before
     }
 
+    // The range of a plain OSC address is changed on its tile (the encoder's Min and Max)
+    {
+        CHECK(ex.addPoint(beamer, {"/count", "i", 0, 1}));
+        const quint64 enc = ex.addControl(beamer, "/count", "knob");
+        CHECK(enc != 0 && ex.control(enc)->max == 1);
+        pxs::controls::Control c = *ex.control(enc);
+        c.applyProps(QJsonObject{{"min", 0}, {"max", 127}});
+        CHECK(ex.update(enc, c));
+        CHECK(ex.control(enc)->max == 127); // it takes
+        CHECK(ex.setValue(enc, 100) && receive(in, &m) && m.types == "i" && m.args[0].toInt() == 100);
+        CHECK(ex.remove(enc) && ex.removePoint(beamer, "/count"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
+
     // A macro that sends to two addresses: the one that gives the feedback is chosen
     {
         CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));

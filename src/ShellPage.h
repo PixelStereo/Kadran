@@ -301,10 +301,10 @@ inline constexpr char kScriptMid[] = R"JS(
     const type = el('select'); [['f', 'Float'], ['i', 'Integer'], ['T', 'On / off'], ['N', 'Trigger (no value)']].forEach(o => { const op = el('option', '', o[1]); op.value = o[0]; type.appendChild(op); });
     type.style.cssText = 'width:100%;padding:8px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:7px;font:inherit'; form.appendChild(type);
     const two = el('div', 'two'); const min = field(two, 'Minimum', 'min 0'), max = field(two, 'Maximum', 'max 1'); form.appendChild(two);
-    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; }; return { path, type, min, max };
+    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; max.placeholder = type.value === 'i' ? 'max 127' : 'max 1'; }; return { path, type, min, max };
   }, f => {
     if (!f.path.value.trim().startsWith('/')) { say('An address starts with /'); return false; }
-    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? 1 : +f.max.value });
+    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? (f.type.value === 'i' ? 127 : 1) : +f.max.value });
   });
   const toggleEdit = () => { try { const b = frame.contentDocument.getElementById('edit'); if (b && !b.hidden) b.click(); $('#edit').classList.toggle('on', b && b.classList.contains('on')); } catch (_) {} };
   $('#edit').onclick = toggleEdit;
