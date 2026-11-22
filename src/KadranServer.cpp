@@ -171,7 +171,13 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         p.type = o.value("type").toString();
         p.min = o.value("min").toDouble(0);
         p.max = o.value("max").toDouble(1);
-        if (!m_ex->addPoint(quint64(o.value("device").toDouble()), p)) say(client, QStringLiteral("This address cannot be added (a path like /layer/1/opacity, not used yet)"));
+        const quint64 device = quint64(o.value("device").toDouble());
+        if (!m_ex->addPoint(device, p)) {
+            say(client, QStringLiteral("This address cannot be added (a path like /layer/1/opacity, not used yet)"));
+        } else if (o.value("widget").toBool()) { // and a control for it, on the page
+            checkpoint();
+            say(client, m_ex->addTargets({{device, p.path}}, QString(), false, o.value("page").toString().toULongLong()));
+        }
         m_dirty = true;
     } else if (type == QLatin1String("removePoint")) {
         if (!m_ex->removePoint(quint64(o.value("device").toDouble()), o.value("path").toString())) say(client, QStringLiteral("A control still uses this address"));
