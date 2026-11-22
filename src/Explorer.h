@@ -118,7 +118,7 @@ public:
     bool restore(const std::vector<pxs::controls::Control> &controls) override; // undo, redo
 
     // ParameterSource: scope is a device's id
-    bool info(quint64 scope, const QString &path, ParamInfo *out) const override;
+    bool info(quint64 scope, const QString &path, pxs::controls::ParamInfo *out) const override;
     QJsonValue value(quint64 scope, const QString &path) const override;
     bool setNumber(quint64 scope, const QString &path, double v) override;
     bool setJson(quint64 scope, const QString &path, const QJsonValue &v) override;

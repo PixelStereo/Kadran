@@ -2,33 +2,53 @@
 
 #include "KadranServer.h"
 
+#include <pxs/Convert.h>
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <algorithm>
+#include <cmath>
 
 using pxs::controls::Control;
+using pxs::core::Value;
+using pxs::core::ValueList;
+using pxs::core::tree::ArgRange;
+
+namespace {
+// The tree speaks std::string and Value (pxs-core); the rest of Kadran, QString and QVariant: the edge is here
+std::string u8(const QString &s) { return pxs::convert::toUtf8(s); }
+double number(const Value &v) { return v.number().value_or(0.0); }
+int whole(const Value &v) { return int(std::lround(number(v))); }
+ArgRange between(double lo, double hi) { return ArgRange{Value(lo), Value(hi), {}, {}}; }
+ArgRange oneOf(const QStringList &names)
+{
+    ArgRange r;
+    for (const QString &name : names) r.vals.emplace_back(u8(name));
+    return r;
+}
+} // namespace
 
 OscDevice::OscDevice(Explorer *explorer, KadranServer *server, const QString &name, QObject *parent)
     : QObject(parent), m_ex(explorer), m_server(server), m_service(&m_tree, name, this)
 {
     // The page and the view shown: parameters that anything can read and write
-    pxs::Node &page = m_tree.add(QStringLiteral("/kadran/page"));
-    page.type = QStringLiteral("i");
+    pxs::core::tree::Node &page = m_tree.add("/kadran/page");
+    page.type = "i";
     page.access = 3;
-    page.description = QStringLiteral("The page shown, 1 for the first: the same one on every screen");
-    page.get = [this] { return QVariantList{pageIndex()}; };
-    page.set = [this](const QVariantList &a) {
-        if (a.isEmpty()) return false;
-        showPage(a[0].toInt());
+    page.description = "The page shown, 1 for the first: the same one on every screen";
+    page.get = [this] { return ValueList{Value(pageIndex())}; };
+    page.set = [this](const ValueList &a) {
+        if (a.empty()) return false;
+        showPage(whole(a[0]));
         return true;
     };
-    pxs::Node &view = m_tree.add(QStringLiteral("/kadran/view"));
-    view.type = QStringLiteral("s");
+    pxs::core::tree::Node &view = m_tree.add("/kadran/view");
+    view.type = "s";
     view.access = 3;
-    view.description = QStringLiteral("The view shown, by its name");
-    view.get = [this] { return QVariantList{m_ex->activeView()}; };
-    view.set = [this](const QVariantList &a) { return !a.isEmpty() && m_ex->recallView(a[0].toString()); };
+    view.description = "The view shown, by its name";
+    view.get = [this] { return ValueList{Value(u8(m_ex->activeView()))}; };
+    view.set = [this](const ValueList &a) { return !a.empty() && m_ex->recallView(pxs::convert::fromUtf8(a[0].text())); };
 
     m_pump.setInterval(40);
     connect(&m_pump, &QTimer::timeout, this, &OscDevice::pump);
@@ -123,41 +143,40 @@ void OscDevice::rebuild()
     for (const Page &p : list) sig += QString::number(p.id) + QLatin1Char('|') + p.name + QLatin1Char('\n');
     if (sig != m_pagesSeen) {
         m_pagesSeen = sig;
-        m_tree.remove(QStringLiteral("/kadran/pages"));
-        m_tree.addAction(QStringLiteral("/kadran/pages/next"), QStringLiteral("N"), [this](const QVariantList &) { showPage(pageIndex() + 1); return true; }, QStringLiteral("The next page"));
-        m_tree.addAction(QStringLiteral("/kadran/pages/prev"), QStringLiteral("N"), [this](const QVariantList &) { showPage(pageIndex() - 1); return true; }, QStringLiteral("The previous page"));
+        m_tree.remove("/kadran/pages");
+        m_tree.addAction("/kadran/pages/next", "N", [this](const ValueList &) { showPage(pageIndex() + 1); return true; }, "The next page");
+        m_tree.addAction("/kadran/pages/prev", "N", [this](const ValueList &) { showPage(pageIndex() - 1); return true; }, "The previous page");
         QSet<QString> taken{QStringLiteral("next"), QStringLiteral("prev")};
         for (const Page &p : list) {
             const quint64 id = p.id;
-            m_tree.addAction(QStringLiteral("/kadran/pages/") + unique(slug(p.name), taken), QStringLiteral("N"),
-                             [this, id](const QVariantList &) { m_server->setCurrentPage(id); return true; }, QStringLiteral("Show the page ") + p.name);
+            m_tree.addAction("/kadran/pages/" + u8(unique(slug(p.name), taken)), "N",
+                             [this, id](const ValueList &) { m_server->setCurrentPage(id); return true; }, "Show the page " + u8(p.name));
         }
-        if (pxs::Node *n = m_tree.find(QStringLiteral("/kadran/page")))
-            n->range = QJsonArray{QJsonObject{{"MIN", 1}, {"MAX", std::max<int>(1, int(list.size()))}}};
+        if (pxs::core::tree::Node *n = m_tree.find("/kadran/page"))
+            n->range = {between(1, std::max<int>(1, int(list.size())))};
     }
 
     // The views
     const QStringList views = m_ex->viewNames();
     if (views.join(QLatin1Char('\n')) != m_viewsSeen) {
         m_viewsSeen = views.join(QLatin1Char('\n'));
-        m_tree.remove(QStringLiteral("/kadran/views"));
+        m_tree.remove("/kadran/views");
         const auto step = [this](int by) {
             const QStringList names = m_ex->viewNames();
             if (names.isEmpty()) return false;
             const int n = int(names.size()), at = names.indexOf(m_ex->activeView());
             return m_ex->recallView(names[((at + by) % n + n) % n]);
         };
-        m_tree.addAction(QStringLiteral("/kadran/views/next"), QStringLiteral("N"), [step](const QVariantList &) { return step(1); }, QStringLiteral("The next view"));
-        m_tree.addAction(QStringLiteral("/kadran/views/prev"), QStringLiteral("N"), [step](const QVariantList &) { return step(-1); }, QStringLiteral("The previous view"));
+        m_tree.addAction("/kadran/views/next", "N", [step](const ValueList &) { return step(1); }, "The next view");
+        m_tree.addAction("/kadran/views/prev", "N", [step](const ValueList &) { return step(-1); }, "The previous view");
         QSet<QString> taken{QStringLiteral("next"), QStringLiteral("prev")};
-        QJsonArray vals;
-        for (const QString &name : views) {
-            vals.append(name);
-            m_tree.addAction(QStringLiteral("/kadran/views/") + unique(slug(name), taken), QStringLiteral("N"),
-                             [this, name](const QVariantList &) { return m_ex->recallView(name); }, QStringLiteral("Show the view ") + name);
+        for (const QString &name : views)
+            m_tree.addAction("/kadran/views/" + u8(unique(slug(name), taken)), "N",
+                             [this, name](const ValueList &) { return m_ex->recallView(name); }, "Show the view " + u8(name));
+        if (pxs::core::tree::Node *n = m_tree.find("/kadran/view")) {
+            n->range.clear();
+            if (!views.isEmpty()) n->range = {oneOf(views)};
         }
-        if (pxs::Node *n = m_tree.find(QStringLiteral("/kadran/view")))
-            n->range = vals.isEmpty() ? QJsonArray() : QJsonArray{QJsonObject{{"VALS", vals}}};
     }
 
     // The widgets
@@ -166,7 +185,7 @@ void OscDevice::rebuild()
         m_controlsSeen = csig;
         for (auto it = m_paths.begin(); it != m_paths.end(); ++it) m_told.remove(it.key());
         m_paths.clear();
-        m_tree.remove(QStringLiteral("/kadran/controls"));
+        m_tree.remove("/kadran/controls");
         QHash<quint64, QString> pageOf; // a control's page: the top-level group that holds it
         for (const Control &c : all) {
             quint64 top = c.group;
@@ -183,70 +202,68 @@ void OscDevice::rebuild()
             const QString pageName = pageOf.value(c.id, QStringLiteral("main"));
             if (!pageSlugs.contains(pageName)) pageSlugs.insert(pageName, unique(slug(pageName), pageNames));
             const QString path = QStringLiteral("/kadran/controls/") + pageSlugs.value(pageName) + QLatin1Char('/') + slug(c.key.isEmpty() ? c.name : c.key);
-            if (m_tree.find(path)) continue; // two with the same key: the first
+            const std::string where = u8(path);
+            if (m_tree.find(where)) continue; // two with the same key: the first
             const quint64 id = c.id;
-            const auto number = [this, id](auto field) -> QVariant {
+            const auto read = [this, id](auto field) -> double { // what the widget shows now, as a number
                 const auto now = m_ex->control(id);
-                return now ? QVariant(field(*now)) : QVariant(0.0);
+                return now ? double(field(*now)) : 0.0;
             };
             if (c.kind == Control::Kind::Button) {
-                m_tree.addAction(path, QStringLiteral("N"), [this, id](const QVariantList &) {
+                m_tree.addAction(where, "N", [this, id](const ValueList &) {
                     const bool on = m_ex->setValue(id, 1);
                     m_ex->setValue(id, 0);
                     return on;
-                }, c.name);
+                }, u8(c.name));
                 continue;
             }
-            pxs::Node &n = m_tree.add(path);
+            pxs::core::tree::Node &n = m_tree.add(where);
             n.access = 3;
-            n.description = c.name;
+            n.description = u8(c.name);
             if (c.kind == Control::Kind::Slider) {
-                n.type = QStringLiteral("f");
-                n.range = QJsonArray{QJsonObject{{"MIN", c.min}, {"MAX", c.max}}};
-                n.clip = QStringLiteral("both");
-                n.get = [number] { return QVariantList{number([](const Control &k) { return k.value; })}; };
-                n.set = [this, id](const QVariantList &a) { return !a.isEmpty() && m_ex->setValue(id, a[0].toDouble()); };
+                n.type = "f";
+                n.range = {between(c.min, c.max)};
+                n.clip = "both";
+                n.get = [read] { return ValueList{Value(read([](const Control &k) { return k.value; }))}; };
+                n.set = [this, id](const ValueList &a) { return !a.empty() && m_ex->setValue(id, number(a[0])); };
             } else if (c.kind == Control::Kind::Toggle) {
-                n.type = QStringLiteral("T");
-                n.get = [number] { return QVariantList{number([](const Control &k) { return k.value; }).toDouble() >= 0.5}; };
-                n.set = [this, id](const QVariantList &a) { return !a.isEmpty() && m_ex->setValue(id, a[0].toBool() || a[0].toDouble() >= 0.5 ? 1 : 0); };
+                n.type = "T";
+                n.get = [read] { return ValueList{Value(read([](const Control &k) { return k.value; }) >= 0.5)}; };
+                n.set = [this, id](const ValueList &a) { return !a.empty() && m_ex->setValue(id, a[0].truthy() || number(a[0]) >= 0.5 ? 1 : 0); };
             } else if (c.kind == Control::Kind::Choice) {
-                n.type = QStringLiteral("s");
-                QJsonArray vals;
-                for (const QString &s : c.choices) vals.append(s);
-                n.range = QJsonArray{QJsonObject{{"VALS", vals}}};
+                n.type = "s";
+                n.range = {oneOf(c.choices)};
                 n.get = [this, id] {
                     const auto now = m_ex->control(id);
                     const int i = now ? int(now->value) : 0;
-                    return QVariantList{now && i >= 0 && i < now->choices.size() ? now->choices[i] : QString()};
+                    return ValueList{Value(u8(now && i >= 0 && i < now->choices.size() ? now->choices[i] : QString()))};
                 };
-                n.set = [this, id](const QVariantList &a) {
-                    if (a.isEmpty()) return false;
+                n.set = [this, id](const ValueList &a) {
+                    if (a.empty()) return false;
                     const auto now = m_ex->control(id);
                     if (!now) return false;
-                    int i = now->choices.indexOf(a[0].toString()); // its name, or its index
-                    if (i < 0 && a[0].typeId() != QMetaType::QString) i = a[0].toInt();
+                    int i = now->choices.indexOf(pxs::convert::fromUtf8(a[0].text())); // its name, or its index
+                    if (i < 0 && !a[0].is<std::string>()) i = whole(a[0]);
                     return i >= 0 && i < now->choices.size() && m_ex->setValue(id, i);
                 };
             } else if (c.kind == Control::Kind::Pad) {
-                n.type = QStringLiteral("ff");
-                const QJsonObject r{{"MIN", c.min}, {"MAX", c.max}};
-                n.range = QJsonArray{r, r};
-                n.clip = QStringLiteral("both");
+                n.type = "ff";
+                n.range = {between(c.min, c.max), between(c.min, c.max)};
+                n.clip = "both";
                 n.get = [this, id] {
                     const auto now = m_ex->control(id);
-                    return QVariantList{now ? now->value : 0.0, now ? now->value2 : 0.0};
+                    return ValueList{Value(now ? double(now->value) : 0.0), Value(now ? double(now->value2) : 0.0)};
                 };
-                n.set = [this, id](const QVariantList &a) { return a.size() >= 2 && m_ex->setPoint(id, a[0].toDouble(), a[1].toDouble()); };
+                n.set = [this, id](const ValueList &a) { return a.size() >= 2 && m_ex->setPoint(id, number(a[0]), number(a[1])); };
             } else { // one ball
-                n.type = QStringLiteral("ff");
+                n.type = "ff";
                 const auto &b = c.balls.empty() ? pxs::controls::Ball() : c.balls[0];
-                n.range = QJsonArray{QJsonObject{{"MIN", b.minX}, {"MAX", b.maxX}}, QJsonObject{{"MIN", b.minY}, {"MAX", b.maxY}}};
+                n.range = {between(b.minX, b.maxX), between(b.minY, b.maxY)};
                 n.get = [this, id] {
                     const auto now = m_ex->control(id);
-                    return QVariantList{now && !now->points.empty() ? now->points[0][0] : 0.0, now && !now->points.empty() ? now->points[0][1] : 0.0};
+                    return ValueList{Value(now && !now->points.empty() ? double(now->points[0][0]) : 0.0), Value(now && !now->points.empty() ? double(now->points[0][1]) : 0.0)};
                 };
-                n.set = [this, id](const QVariantList &a) { return a.size() >= 2 && m_ex->setPoints(id, {a[0].toDouble(), a[1].toDouble()}); };
+                n.set = [this, id](const ValueList &a) { return a.size() >= 2 && m_ex->setPoints(id, {number(a[0]), number(a[1])}); };
             }
             m_paths.insert(path, id);
             m_told.insert(path, n.get());
@@ -257,13 +274,14 @@ void OscDevice::rebuild()
 void OscDevice::pump()
 {
     const auto tell = [this](const QString &path) {
-        const pxs::Node *n = m_tree.find(path);
+        const std::string where = u8(path);
+        const pxs::core::tree::Node *n = m_tree.find(where);
         if (!n || !n->get) return;
-        const QVariantList now = n->get();
+        const ValueList now = n->get();
         const auto seen = m_told.constFind(path);
         if (seen != m_told.cend() && *seen == now) return;
         m_told.insert(path, now);
-        m_tree.changed(path);
+        m_tree.changed(where);
     };
     tell(QStringLiteral("/kadran/page"));
     tell(QStringLiteral("/kadran/view"));

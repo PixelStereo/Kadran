@@ -6,6 +6,8 @@
 #include <QNetworkInterface>
 #include <QSet>
 
+using ParamInfo = pxs::controls::ParamInfo; // what a view of a parameter knows of it (pxs-core)
+
 using namespace pxs;
 using pxs::controls::Control;
 

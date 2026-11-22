@@ -13,7 +13,7 @@
 #include "Explorer.h"
 
 #include <pxs/OscService.h>
-#include <pxs/Tree.h>
+#include <pxs/core/tree/tree.h>
 
 #include <QHash>
 #include <QSet>
@@ -31,7 +31,7 @@ public:
     bool start(quint16 oscPort, quint16 httpPort);
     quint16 oscPort() const { return m_service.oscPort(); }
     quint16 httpPort() const { return m_service.httpPort(); }
-    pxs::Tree &tree() { return m_tree; }
+    pxs::core::tree::Tree &tree() { return m_tree; }
 
 private:
     struct Page {
@@ -49,10 +49,10 @@ private:
 
     Explorer *m_ex;
     KadranServer *m_server;
-    pxs::Tree m_tree;
+    pxs::core::tree::Tree m_tree;
     pxs::OscService m_service;
     QTimer m_pump, m_rebuild;
     QString m_pagesSeen, m_viewsSeen, m_controlsSeen;
-    QHash<QString, QVariantList> m_told; // the last value told, by path
+    QHash<QString, pxs::core::ValueList> m_told; // the last value told, by path
     QHash<QString, quint64> m_paths;     // widget path -> control id
 };
