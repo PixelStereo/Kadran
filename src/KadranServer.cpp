@@ -144,7 +144,7 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);
         return true;
     }
-    if (type == QLatin1String("multi")) { // from the controls page: a tile that is a view of one address sends to several
+    if (type == QLatin1String("multitarget")) { // from the controls page: a tile that is a view of one address sends to several
         QString why;
         checkpoint();
         const bool done = m_ex->toMulti(o.value("id").toString().toULongLong(), &why);
@@ -185,6 +185,9 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
             checkpoint();
             say(client, m_ex->addTargets({{device, p.path}}, QString(), false, o.value("page").toString().toULongLong()));
         }
+        m_dirty = true;
+    } else if (type == QLatin1String("pointRange")) {
+        if (!m_ex->setPointRange(quint64(o.value("device").toDouble()), o.value("path").toString(), o.value("min").toDouble(), o.value("max").toDouble())) say(client, QStringLiteral("The maximum must be above the minimum"));
         m_dirty = true;
     } else if (type == QLatin1String("removePoint")) {
         if (!m_ex->removePoint(quint64(o.value("device").toDouble()), o.value("path").toString())) say(client, QStringLiteral("A control still uses this address"));
