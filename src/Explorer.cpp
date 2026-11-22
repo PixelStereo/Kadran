@@ -170,6 +170,7 @@ void Explorer::listenAll(quint64 deviceId)
     Dev *d = device(deviceId);
     if (!d || !d->client) return;
     for (const Control &c : m_controls) {
+        if (c.macro() && c.feedback >= 0 && size_t(c.feedback) < c.targets.size() && c.targets[size_t(c.feedback)].scope == deviceId) d->client->listen(c.targets[size_t(c.feedback)].path); // its feedback
         if (c.boundScope != deviceId || !c.bound()) continue;
         if (c.kind == Control::Kind::Color) continue;
         for (const QString &p : c.boundPaths()) d->client->listen(p);
@@ -774,6 +775,8 @@ bool Explorer::update(quint64 id, const Control &change)
             }
         }
     }
+    if (now && now->macro() && now->feedback >= 0 && size_t(now->feedback) < now->targets.size()) // the target that gives the feedback is listened to
+        listenTo(device(now->targets[size_t(now->feedback)].scope), now->targets[size_t(now->feedback)].path);
     changed();
     return true;
 }
@@ -1268,5 +1271,69 @@ bool Explorer::sendOsc(Dev *d, const QString &path, const QJsonArray &values)
     if (m_udp.state() == QAbstractSocket::UnconnectedState) m_udp.bind(QHostAddress::AnyIPv4, 0);
     if (m_udp.writeDatagram(osc::encode(m), d->address, d->port) < 0) return false;
     if (tag != QLatin1Char('N')) d->local.setValue(path, QJsonArray{v});
+    return true;
+}
+
+// A tile talks to another address
+QString Explorer::retarget(quint64 id, const Target &t)
+{
+    const Control *old = controls::find(m_controls, id);
+    if (!old || old->boundParam.isEmpty() || old->kind == Control::Kind::Pad || old->kind == Control::Kind::Points || old->kind == Control::Kind::Color)
+        return QStringLiteral("This tile cannot change its address");
+    Dev *d = device(t.device);
+    if (!d || !ready(d)) return QStringLiteral("This device is not ready");
+    std::optional<Control> n = controls::forParameter(*this, t.device, t.path, old->group);
+    if (!n) return QStringLiteral("Not shown as a control");
+    if (n->kind != old->kind) return QStringLiteral("This address is not of the same kind as the tile");
+    const quint64 oldScope = old->boundScope;
+    const QStringList oldPaths = old->boundPaths();
+    Control change = *n;
+    change.id = id;
+    change.boundLabel = d->name + QLatin1Char(':') + t.path;
+    change.accent = old->accent;
+    change.curve = old->curve;
+    change.filters = old->filters;
+    change.physics = old->physics;
+    change.span = old->span;
+    change.gx = old->gx;
+    change.gy = old->gy;
+    change.gw = old->gw;
+    change.gh = old->gh;
+    const auto allowed = widgetsFor(t.device, t.path);
+    if (std::any_of(allowed.begin(), allowed.end(), [&](const auto &w) { return w.first == old->widget; })) change.widget = old->widget;
+    if (!controls::update(m_controls, id, change, makeKey).found) return QStringLiteral("This tile cannot change its address");
+    for (const QString &p : oldPaths) { // what nothing shows any more is not listened to
+        const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == oldScope && o.boundPaths().contains(p); });
+        if (!used)
+            if (Dev *od = device(oldScope); od && od->client) od->client->ignore(p);
+    }
+    listenTo(d, t.path);
+    m_filters.forget(id);
+    changed();
+    return QStringLiteral("Now talks to %1").arg(t.path);
+}
+
+bool Explorer::toMulti(quint64 id, QString *why)
+{
+    const auto fail = [&](const char *text) {
+        if (why) *why = QString::fromLatin1(text);
+        return false;
+    };
+    Control *c = controls::find(m_controls, id);
+    if (!c || c->macro() || c->boundParam.isEmpty() || (c->kind != Control::Kind::Slider && c->kind != Control::Kind::Toggle)) return fail("This tile cannot send to several addresses");
+    controls::Target first;
+    if (!makeTarget({c->boundScope, c->boundParam}, &first)) return fail("This address cannot be sent to");
+    c->targets = {first};
+    c->feedback = 0; // the address it was a view of keeps giving the value it shows
+    c->boundScope = 0;
+    c->boundParam.clear();
+    c->boundLabel.clear();
+    c->resets.clear();
+    c->min = 0;
+    c->max = 1;
+    c->step = 0.01;
+    c->def = 0;
+    c->unit.clear();
+    changed();
     return true;
 }

@@ -170,6 +170,28 @@ int main(int argc, char **argv)
         while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
     }
 
+    // A tile talks to another address; a tile becomes a multi-target interaction
+    {
+        const quint64 tile = ex.addControl(beamer, "/layer/1/opacity");
+        CHECK(tile != 0);
+        CHECK(ex.addPoint(beamer, {"/layer/2/opacity", "f", 0, 5}));
+        CHECK(ex.addPoint(beamer, {"/other", "T", 0, 1}));
+        CHECK(ex.retarget(tile, {beamer, "/other"}).contains("kind")); // a switch is not a fader's kind
+        CHECK(ex.control(tile)->boundParam == "/layer/1/opacity");
+        CHECK(ex.retarget(tile, {beamer, "/layer/2/opacity"}).startsWith("Now talks"));
+        const auto moved = ex.control(tile);
+        CHECK(moved && moved->boundParam == "/layer/2/opacity" && moved->max == 5 && moved->id == tile);
+        CHECK(ex.setValue(tile, 2.5) && receive(in, &m) && m.address == "/layer/2/opacity" && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
+        QString why;
+        CHECK(ex.toMulti(tile, &why) && ex.control(tile)->macro() && ex.control(tile)->feedback == 0);
+        CHECK(ex.addToMacro(tile, {{beamer, "/layer/1/opacity"}}) == 1);
+        CHECK(std::abs(ex.control(tile)->value - 0.5) < 1e-6); // the feedback: 2.5 of 0..5
+        CHECK(!ex.toMulti(tile, &why)); // it is one already
+        CHECK(ex.remove(tile));
+        CHECK(ex.removePoint(beamer, "/layer/2/opacity") && ex.removePoint(beamer, "/other"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
+
     // The controls gone, the device is kept (it is not announced by anything): until it is removed
     CHECK(ex.remove(fader) && ex.remove(toggle) && ex.remove(go));
     CHECK(hasDevice(ex, beamer) && hasDevice(ex, second));

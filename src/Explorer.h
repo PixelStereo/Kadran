@@ -86,6 +86,10 @@ public:
     // More parameters for a macro; how many were added
     int addToMacro(quint64 id, const QList<Target> &targets);
     static QList<Target> targetsFromJson(const QJsonArray &list);
+    // A tile that is a view of one address: it talks to another (an address dropped on it), keeping its place, its widget and its filters. Returns what to tell the operator
+    QString retarget(quint64 id, const Target &target);
+    // A tile that is a view of one address becomes a multi-target interaction (that address is its first target, and gives the feedback). false: it cannot
+    bool toMulti(quint64 id, QString *why = nullptr);
     // A node of a device's namespace: all the controls it holds, in a group of the page (`page`: where; 0 the first one) or in a page of
     // their own (`asPage`). `count` is how many controls that makes (the front page asks to confirm a long one)
     int countNode(quint64 deviceId, const QString &path) const;
@@ -133,6 +137,7 @@ public:
     std::optional<pxs::controls::Control> control(quint64 id) const override;
     quint64 revision() const override { return m_revision; }
     QString title() const override { return QStringLiteral("Kadran"); }
+    std::optional<pxs::controls::FilterTrace> filterTrace(quint64 id) const override { return m_filters.trace(id); }
     bool setValue(quint64 id, double value) override;
     bool setPoint(quint64 id, double x, double y) override;
     bool setPoints(quint64 id, const std::vector<double> &xy) override;

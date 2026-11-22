@@ -144,6 +144,13 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         for (const auto &d : m_ex->devices()) sendTree(d->id, client);
         return true;
     }
+    if (type == QLatin1String("multi")) { // from the controls page: a tile that is a view of one address sends to several
+        QString why;
+        checkpoint();
+        const bool done = m_ex->toMulti(o.value("id").toString().toULongLong(), &why);
+        for (QTcpSocket *s : std::as_const(m_shells)) say(s, done ? QStringLiteral("A multi-target interaction now: drop more addresses on it with Alt held") : why);
+        return true;
+    }
     if (!m_shells.contains(client) && type != QLatin1String("drop")) return false;
     if (type == QLatin1String("open")) {
         m_ex->openDevice(quint64(o.value("device").toDouble()));
@@ -186,8 +193,20 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         const quint64 page = o.value("page").toString().toULongLong();
         if (const quint64 onto = o.value("onto").toString().toULongLong()) { // on a macro's tile: they are sent to as well
             checkpoint();
-            const int n = m_ex->addToMacro(onto, Explorer::targetsFromJson(list));
-            for (QTcpSocket *s : std::as_const(m_shells)) say(s, n ? QStringLiteral("Now sending to %1 more").arg(n) : QStringLiteral("Nothing to add"));
+            const QList<Explorer::Target> targets = Explorer::targetsFromJson(list);
+            QString text;
+            const auto tile = m_ex->control(onto);
+            if (tile && !tile->macro() && !o.value("add").toBool()) { // a view of one address: it talks to the one dropped on it
+                if (!targets.isEmpty()) text = m_ex->retarget(onto, targets.first());
+            } else {
+                if (tile && !tile->macro() && !m_ex->toMulti(onto, &text)) { // Alt: it sends to this one as well, so it becomes a multi-target interaction
+                    for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
+                    return true;
+                }
+                const int n = m_ex->addToMacro(onto, targets);
+                text = n ? QStringLiteral("Now sending to %1 more").arg(n) : QStringLiteral("Nothing to add");
+            }
+            for (QTcpSocket *s : std::as_const(m_shells)) say(s, text);
             return true;
         }
         if (list.size() == 1 && list[0].toObject().value("node").toBool()) { // a node, not a parameter: all it holds, in a group or a page
