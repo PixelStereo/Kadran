@@ -154,6 +154,20 @@ int main(int argc, char **argv)
         CHECK(ex.setValue(fader, 0.3) && receive(in, &m) && std::abs(m.args[0].toDouble() - 0.3) < 1e-6); // no filter: as before
     }
 
+    // The range of a plain OSC address is changed on its tile (the encoder's Min and Max)
+    {
+        CHECK(ex.addPoint(beamer, {"/count", "i", 0, 1}));
+        const quint64 enc = ex.addControl(beamer, "/count", "knob");
+        CHECK(enc != 0 && ex.control(enc)->max == 1);
+        pxs::controls::Control c = *ex.control(enc);
+        c.applyProps(QJsonObject{{"min", 0}, {"max", 127}});
+        CHECK(ex.update(enc, c));
+        CHECK(ex.control(enc)->max == 127); // it takes
+        CHECK(ex.setValue(enc, 100) && receive(in, &m) && m.types == "i" && m.args[0].toInt() == 100);
+        CHECK(ex.remove(enc) && ex.removePoint(beamer, "/count"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
+
     // A macro that sends to two addresses: the one that gives the feedback is chosen
     {
         CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));
@@ -167,6 +181,28 @@ int main(int argc, char **argv)
         CHECK(std::abs(ex.control(macro)->value - 0.5) < 1e-6); // taken back from /gain (5 of 0..10)
         CHECK(ex.remove(macro));
         CHECK(ex.removePoint(beamer, "/gain"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
+
+    // A tile talks to another address; a tile becomes a multi-target interaction
+    {
+        const quint64 tile = ex.addControl(beamer, "/layer/1/opacity");
+        CHECK(tile != 0);
+        CHECK(ex.addPoint(beamer, {"/layer/2/opacity", "f", 0, 5}));
+        CHECK(ex.addPoint(beamer, {"/other", "T", 0, 1}));
+        CHECK(ex.retarget(tile, {beamer, "/other"}).contains("kind")); // a switch is not a fader's kind
+        CHECK(ex.control(tile)->boundParam == "/layer/1/opacity");
+        CHECK(ex.retarget(tile, {beamer, "/layer/2/opacity"}).startsWith("Now talks"));
+        const auto moved = ex.control(tile);
+        CHECK(moved && moved->boundParam == "/layer/2/opacity" && moved->max == 5 && moved->id == tile);
+        CHECK(ex.setValue(tile, 2.5) && receive(in, &m) && m.address == "/layer/2/opacity" && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
+        QString why;
+        CHECK(ex.toMulti(tile, &why) && ex.control(tile)->macro() && ex.control(tile)->feedback == 0);
+        CHECK(ex.addToMacro(tile, {{beamer, "/layer/1/opacity"}}) == 1);
+        CHECK(std::abs(ex.control(tile)->value - 0.5) < 1e-6); // the feedback: 2.5 of 0..5
+        CHECK(!ex.toMulti(tile, &why)); // it is one already
+        CHECK(ex.remove(tile));
+        CHECK(ex.removePoint(beamer, "/layer/2/opacity") && ex.removePoint(beamer, "/other"));
         while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
     }
 

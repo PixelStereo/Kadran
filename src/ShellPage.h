@@ -168,7 +168,7 @@ inline constexpr char kScript[] = R"JS(
     if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)
       row.draggable = true;
       row.ondragstart = e => {
-        const as = e.altKey ? 'page' : 'group';
+        const as = e.altKey ? 'page' : 'ask'; // the page asks: a group of the page, or a page of its own
         e.dataTransfer.setData('application/x-pxs-address', JSON.stringify([{ device: dev, path: n.p, node: true, as }]));
         e.dataTransfer.setData('text/plain', n.p);
         e.dataTransfer.effectAllowed = 'copy';
@@ -306,12 +306,12 @@ inline constexpr char kScriptMid[] = R"JS(
     const type = el('select'); [['f', 'Float'], ['i', 'Integer'], ['T', 'On / off'], ['N', 'Trigger (no value)']].forEach(o => { const op = el('option', '', o[1]); op.value = o[0]; type.appendChild(op); });
     type.style.cssText = 'width:100%;padding:8px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:7px;font:inherit'; form.appendChild(type);
     const two = el('div', 'two'); const min = field(two, 'Minimum', 'min 0'), max = field(two, 'Maximum', 'max 1'); form.appendChild(two);
-    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; };
+    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; max.placeholder = type.value === 'i' ? 'max 127' : 'max 1'; };
     const wl = el('label'); wl.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px'; const w = el('input'); w.type = 'checkbox'; w.checked = true; w.style.width = 'auto'; w.style.margin = '0'; wl.appendChild(w); wl.appendChild(document.createTextNode('Put a control for it on the page')); form.appendChild(wl);
     return { path, type, min, max, w };
   }, f => {
     if (!f.path.value.trim().startsWith('/')) { say('An address starts with /'); return false; }
-    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? 1 : +f.max.value, widget: f.w.checked, page: pageId() });
+    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? (f.type.value === 'i' ? 127 : 1) : +f.max.value, widget: f.w.checked, page: pageId() });
   });
   const toggleEdit = () => { try { const b = frame.contentDocument.getElementById('edit'); if (b && !b.hidden) b.click(); $('#edit').classList.toggle('on', b && b.classList.contains('on')); } catch (_) {} };
   $('#edit').onclick = toggleEdit;
