@@ -154,6 +154,22 @@ int main(int argc, char **argv)
         CHECK(ex.setValue(fader, 0.3) && receive(in, &m) && std::abs(m.args[0].toDouble() - 0.3) < 1e-6); // no filter: as before
     }
 
+    // A macro that sends to two addresses: the one that gives the feedback is chosen
+    {
+        CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));
+        const quint64 macro = ex.addMacro({{beamer, "/layer/1/opacity"}, {beamer, "/gain"}}, "slider");
+        CHECK(macro != 0 && ex.control(macro)->targets.size() == 2 && ex.control(macro)->feedback == -1);
+        CHECK(ex.setValue(macro, 0.25));
+        pxs::controls::Control c = *ex.control(macro);
+        c.applyProps(QJsonObject{{"feedback", 1}}); // /gain, 0..10
+        CHECK(ex.update(macro, c) && ex.control(macro)->feedback == 1);
+        CHECK(ex.setValue(macro, 0.5));
+        CHECK(std::abs(ex.control(macro)->value - 0.5) < 1e-6); // taken back from /gain (5 of 0..10)
+        CHECK(ex.remove(macro));
+        CHECK(ex.removePoint(beamer, "/gain"));
+        while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
+    }
+
     // The controls gone, the device is kept (it is not announced by anything): until it is removed
     CHECK(ex.remove(fader) && ex.remove(toggle) && ex.remove(go));
     CHECK(hasDevice(ex, beamer) && hasDevice(ex, second));

@@ -643,6 +643,7 @@ std::vector<Control> Explorer::controls() const
         }
         for (controls::Target &t : c.targets)
             if (const Dev *d = device(t.scope)) t.label = d->name + QLatin1Char(':') + t.path;
+        if (c.macro()) controls::fillFeedback(c, *this); // the target that gives the feedback
     }
     controls::fillPhysics(list);
     return list;
@@ -657,6 +658,7 @@ std::optional<Control> Explorer::control(quint64 id) const
         controls::fillBound(out, *this);
         fillResets(out);
     }
+    if (out.macro()) controls::fillFeedback(out, *this);
     if (out.physTarget) {
         std::vector<Control> list = m_controls;
         controls::fillPhysics(list);
