@@ -15,6 +15,8 @@ On a **Mac**, unzip, move Kadran to Applications and Control-click › Open the 
 Open Kadran and it opens in your browser (and on any phone, tablet or computer of the network, at the address it shows):
 
 - **Devices** (left): found by mDNS, or added by hand (`+ Device`, `host:port`). Unfold one to read its namespace. Filter the addresses with the search field.
+- **Plain OSC devices:** `+ Device`, choose *OSC*, give an IP address (or a host name) and the UDP port. The `_osc._udp` services of the network are offered in the dialog with their computer name; several ports of one host are several devices. A plain OSC device has no namespace to read: declare the addresses it takes with `+ Address…` (float, integer, on/off or trigger) and drag them on the page like any parameter. Rename a device with ✎, remove it with ✕ (only when no control shows it).
+- A device that is gone from the network and that no control shows any more disappears by itself; one a control shows stays (offline) until the control is deleted.
 - **Page** (right): drag an address onto it, double-click it, or right-click for the widget (fader, encoder, number, switch, buttons…). Two numbers make an XY pad, or two controls. Select several with Cmd/Ctrl-click or Shift-click.
 - A control is a view of the remote parameter: it follows the device and writes back over OSC. Its address is shown on its tile.
 - **Edit mode:** Cmd/Ctrl+E (or the Edit button): move, resize, restyle, add pages; a bin beside each page's name deletes it (undo brings it back). Cmd/Ctrl+K hides or shows the device explorer.

@@ -3,7 +3,10 @@
 #include <QHash>
 #include <QJsonArray>
 #include <algorithm>
+#include <QHostInfo>
 #include <QNetworkInterface>
+#include <cmath>
+#include <functional>
 #include <QSet>
 
 using ParamInfo = pxs::controls::ParamInfo; // what a view of a parameter knows of it (pxs-core)
@@ -28,7 +31,7 @@ QString makeKey(const QString &name, const QStringList &taken, int index)
 }
 } // namespace
 
-Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this)
+Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this), m_oscDiscovery(this)
 {
     m_retry.setInterval(5000); // a device the page shows that is not answering is tried again
     connect(&m_retry, &QTimer::timeout, this, &Explorer::retry);
@@ -46,9 +49,45 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this)
     });
     connect(&m_discovery, &oscquery::Discovery::deviceLost, this, [this](const oscquery::Device &d) {
         for (auto &dev : m_devices)
-            if (dev->name == d.name) dev->online = false;
+            if (dev->kind == Dev::Kind::Query && dev->name == d.name) dev->online = false;
+        pruneDevices();
         emit devicesChanged();
     });
+    connect(&m_oscDiscovery, &oscquery::Discovery::deviceFound, this, [this](const oscquery::Device &d) { nearbyFound(d, false); });
+    connect(&m_oscDiscovery, &oscquery::Discovery::deviceLost, this, [this](const oscquery::Device &d) { nearbyFound(d, true); });
+}
+
+bool Explorer::startSearch()
+{
+    const bool oscjson = m_discovery.start();
+    m_oscDiscovery.start(QStringLiteral("_osc._udp")); // only offered: the plain OSC devices are added by the operator
+    return oscjson;
+}
+
+// A plain OSC service on the network: kept to be offered ("added" tells which ones are devices already)
+void Explorer::nearbyFound(const oscquery::Device &d, bool gone)
+{
+    const QString key = d.name + QLatin1Char('@') + QString::number(d.port);
+    if (gone) {
+        m_nearby.remove(key);
+    } else {
+        if (m_selfOscPort && d.port == m_selfOscPort && (d.address.isLoopback() || QNetworkInterface::allAddresses().contains(d.address))) return; // Kadran itself
+        m_nearby.insert(key, d);
+    }
+    emit nearbyChanged();
+}
+
+QJsonArray Explorer::nearbyJson() const
+{
+    QJsonArray out;
+    for (const oscquery::Device &d : m_nearby) {
+        QString computer = d.host;
+        while (computer.endsWith(QLatin1Char('.'))) computer.chop(1);
+        if (computer.endsWith(QLatin1String(".local"), Qt::CaseInsensitive)) computer.chop(6);
+        const bool added = std::any_of(m_devices.begin(), m_devices.end(), [&](const auto &x) { return x->kind == Dev::Kind::Osc && x->port == d.port && x->host == d.address.toString(); });
+        out.append(QJsonObject{{"name", d.name}, {"computer", computer}, {"address", d.address.toString()}, {"port", d.port}, {"added", added}});
+    }
+    return out;
 }
 
 Explorer::~Explorer()
@@ -66,7 +105,7 @@ Explorer::Dev *Explorer::device(quint64 id) const
 quint64 Explorer::addDevice(const QString &name, const QString &host, quint16 port)
 {
     for (const auto &d : m_devices)
-        if (d->name == name || (d->host == host && d->port == port)) {
+        if (d->kind == Dev::Kind::Query && (d->name == name || (d->host == host && d->port == port))) {
             d->host = host; // the same device, announced again (maybe elsewhere)
             d->port = port;
             return d->id;
@@ -85,7 +124,7 @@ quint64 Explorer::addDevice(const QString &name, const QString &host, quint16 po
 void Explorer::openDevice(quint64 id)
 {
     Dev *d = device(id);
-    if (!d) return;
+    if (!d || d->kind != Dev::Kind::Query) return;
     if (d->client && d->client->state() != oscquery::Client::State::Failed) {
         if (d->client->state() == oscquery::Client::State::Ready) emit deviceReady(id);
         return;
@@ -109,6 +148,7 @@ void Explorer::openDevice(quint64 id)
     connect(c, &oscquery::Client::failed, this, [this, id](const QString &why) {
         if (Dev *dev = device(id)) dev->online = false;
         emit deviceFailed(id, why);
+        pruneDevices(); // one nothing shows goes (it stays in m_pruned: this is its own client's signal)
         emit devicesChanged();
     });
     c->open(d->host, d->port);
@@ -137,7 +177,7 @@ void Explorer::listenAll(quint64 deviceId)
 quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QString &widget, quint64 group)
 {
     Dev *d = device(deviceId);
-    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
+    if (!d || !ready(d)) return 0;
     std::optional<Control> c = controls::forParameter(*this, deviceId, path, group);
     if (!c) return 0;
     ParamInfo info;
@@ -154,7 +194,7 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QStrin
     c->boundLabel = d->name + QLatin1Char(':') + path;
     const quint64 id = controls::add(m_controls, m_nextControl, *c, makeKey);
     if (!id) return 0;
-    d->client->listen(path);
+    listenTo(d, path);
     changed();
     return id;
 }
@@ -162,14 +202,14 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QStrin
 quint64 Explorer::addPad(quint64 deviceId, const QString &pathX, const QString &pathY, quint64 group)
 {
     Dev *d = device(deviceId);
-    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
+    if (!d || !ready(d)) return 0;
     std::optional<Control> c = controls::forParameters(*this, deviceId, pathX, pathY, group);
     if (!c) return 0;
     c->boundLabel = d->name + QLatin1Char(':') + pathX + QStringLiteral(", ") + pathY;
     const quint64 id = controls::add(m_controls, m_nextControl, *c, makeKey);
     if (!id) return 0;
-    d->client->listen(pathX);
-    d->client->listen(pathY);
+    listenTo(d, pathX);
+    listenTo(d, pathY);
     changed();
     return id;
 }
@@ -257,7 +297,16 @@ QJsonObject Explorer::interfaceJson(const std::vector<Control> &controls) const
     QJsonArray devices, list;
     const auto named = [&](quint64 scope) {
         if (!scope || std::any_of(devices.begin(), devices.end(), [&](const QJsonValue &v) { return v.toObject().value("id").toString().toULongLong() == scope; })) return;
-        if (const Dev *d = device(scope)) devices.append(QJsonObject{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}});
+        const Dev *d = device(scope);
+        if (!d) return;
+        QJsonObject o{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}};
+        if (d->kind == Dev::Kind::Osc) {
+            QJsonArray points;
+            for (const Point &p : d->points) points.append(QJsonObject{{"path", p.path}, {"type", p.type}, {"min", p.min}, {"max", p.max}});
+            o.insert("kind", "osc");
+            o.insert("points", points);
+        }
+        devices.append(o);
     };
     for (const Control &c : controls) {
         named(c.boundScope);
@@ -397,9 +446,24 @@ bool Explorer::parseInterface(const QJsonObject &o, std::vector<Control> *out, Q
         const quint16 port = quint16(d.value("port").toInt());
         if (!saved || name.isEmpty()) continue;
         quint64 id = 0;
-        for (const auto &known : m_devices)
-            if (known->name == name) id = known->id;
-        if (!id) id = addDevice(name, d.value("host").toString(), port);
+        if (d.value("kind").toString() == QLatin1String("osc")) { // by where it is: its name is the operator's
+            const QString host = d.value("host").toString();
+            for (const auto &known : m_devices)
+                if (known->kind == Dev::Kind::Osc && known->host == host && known->port == port) id = known->id;
+            if (!id) id = addOscDevice(name, host, port);
+            if (id) {
+                for (const QJsonValue &pv : d.value("points").toArray()) {
+                    const QJsonObject po = pv.toObject();
+                    Point pt{po.value("path").toString(), po.value("type").toString(), po.value("min").toDouble(0), po.value("max").toDouble(1)};
+                    addPoint(id, pt); // the ones already there are refused
+                }
+            }
+        } else {
+            for (const auto &known : m_devices)
+                if (known->kind == Dev::Kind::Query && known->name == name) id = known->id;
+            if (!id) id = addDevice(name, d.value("host").toString(), port);
+        }
+        if (!id) continue;
         scopes.insert(saved, id);
     }
     std::vector<Control> next;
@@ -446,11 +510,13 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
         if (view.name.isEmpty() || !parseInterface(doc, &view.controls, &devices, nullptr)) continue;
         views.push_back(std::move(view));
     }
+    m_holdPrune = true; // the devices the document names are not referenced until its controls are in
     clearControls();
     m_controls = std::move(next);
     m_views = std::move(views);
     m_activeView = o.value("view").toString();
     if (viewNames().indexOf(m_activeView) < 0) m_activeView.clear();
+    m_holdPrune = false;
     changed();
     emit viewsChanged();
     for (quint64 id : std::as_const(devices)) { // their values come when they answer
@@ -464,6 +530,7 @@ bool Explorer::fromJson(const QJsonObject &o, QString *error)
 
 void Explorer::changed()
 {
+    pruneDevices();
     ++m_revision;
     if (!m_activeView.isEmpty()) // the page is the active view
         for (View &v : m_views)
@@ -712,27 +779,30 @@ bool Explorer::remove(quint64 id)
 bool Explorer::info(quint64 scope, const QString &path, ParamInfo *out) const
 {
     const Dev *d = device(scope);
-    if (!d || !d->client) return false;
-    const oscquery::RemoteNode *n = d->client->tree().find(path);
+    const oscquery::RemoteTree *t = treeOf(d);
+    const oscquery::RemoteNode *n = t ? t->find(path) : nullptr;
     return n && n->toParamInfo(out);
 }
 
 QJsonValue Explorer::value(quint64 scope, const QString &path) const
 {
     const Dev *d = device(scope);
-    const oscquery::RemoteNode *n = d && d->client ? d->client->tree().find(path) : nullptr;
+    const oscquery::RemoteTree *t = treeOf(d);
+    const oscquery::RemoteNode *n = t ? t->find(path) : nullptr;
     return n && !n->value.isEmpty() ? n->value[0] : QJsonValue(QJsonValue::Undefined);
 }
 
 bool Explorer::setNumber(quint64 scope, const QString &path, double v)
 {
     Dev *d = device(scope);
+    if (d && d->kind == Dev::Kind::Osc) return sendOsc(d, path, QJsonArray{v});
     return d && d->client && d->client->write(path, QJsonArray{v});
 }
 
 bool Explorer::setJson(quint64 scope, const QString &path, const QJsonValue &v)
 {
     Dev *d = device(scope);
+    if (d && d->kind == Dev::Kind::Osc) return sendOsc(d, path, QJsonArray{v});
     if (!d || !d->client) return false;
     const oscquery::RemoteNode *n = d->client->tree().find(path);
     if (n && n->type == QLatin1String("N")) return d->client->write(path, {});
@@ -843,8 +913,8 @@ static void collect(const Explorer &ex, quint64 device, const pxs::oscquery::Rem
 int Explorer::countNode(quint64 deviceId, const QString &path) const
 {
     const Dev *d = device(deviceId);
-    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
-    const auto *node = d->client->tree().find(path);
+    if (!d || !ready(d)) return 0;
+    const auto *node = treeOf(d)->find(path);
     QStringList paths;
     if (node) collect(*this, deviceId, *node, paths, 0);
     return int(paths.size());
@@ -853,8 +923,8 @@ int Explorer::countNode(quint64 deviceId, const QString &path) const
 QString Explorer::addNode(quint64 deviceId, const QString &path, bool asPage, quint64 page)
 {
     Dev *d = device(deviceId);
-    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return QStringLiteral("This device is not ready");
-    const auto *node = d->client->tree().find(path);
+    if (!d || !ready(d)) return QStringLiteral("This device is not ready");
+    const auto *node = treeOf(d)->find(path);
     QStringList paths;
     if (node) collect(*this, deviceId, *node, paths, 0);
     if (paths.isEmpty()) return QStringLiteral("Nothing to add here");
@@ -874,6 +944,17 @@ QString Explorer::addNode(quint64 deviceId, const QString &path, bool asPage, qu
 
 bool Explorer::restore(const std::vector<Control> &list)
 {
+    for (const Control &c : list) { // a control back (undo) whose device went with it: the device is back too
+        QList<quint64> scopes{c.boundScope};
+        for (const controls::Target &t : c.targets) scopes << t.scope;
+        for (quint64 scope : std::as_const(scopes)) {
+            if (!scope || device(scope)) continue;
+            const auto it = std::find_if(m_pruned.begin(), m_pruned.end(), [&](const auto &d) { return d->id == scope; });
+            if (it == m_pruned.end()) continue;
+            m_devices.push_back(std::move(*it));
+            m_pruned.erase(it);
+        }
+    }
     m_controls = list;
     controls::tidyGroups(m_controls);
     changed();
@@ -886,7 +967,9 @@ QJsonArray Explorer::devicesJson() const
     QJsonArray out;
     for (const auto &d : m_devices) {
         QString state = QStringLiteral("idle");
-        if (d->client) {
+        if (d->kind == Dev::Kind::Osc) {
+            state = QStringLiteral("ready");
+        } else if (d->client) {
             switch (d->client->state()) {
             case pxs::oscquery::Client::State::Connecting: state = QStringLiteral("connecting"); break;
             case pxs::oscquery::Client::State::Ready: state = QStringLiteral("ready"); break;
@@ -895,7 +978,8 @@ QJsonArray Explorer::devicesJson() const
             }
         }
         out.append(QJsonObject{{"id", double(d->id)}, {"name", d->name.isEmpty() ? QStringLiteral("%1:%2").arg(d->host).arg(d->port) : d->name},
-                               {"address", QStringLiteral("%1:%2").arg(d->host).arg(d->port)}, {"online", d->online}, {"state", state}});
+                               {"address", QStringLiteral("%1:%2").arg(d->host).arg(d->port)}, {"online", d->online || d->kind == Dev::Kind::Osc}, {"state", state},
+                               {"kind", d->kind == Dev::Kind::Osc ? "osc" : "oscquery"}});
     }
     return out;
 }
@@ -921,6 +1005,228 @@ static QJsonObject nodeJson(const Explorer &ex, quint64 device, const pxs::oscqu
 QJsonObject Explorer::treeJson(quint64 deviceId) const
 {
     const Dev *d = device(deviceId);
-    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return {};
-    return nodeJson(*this, deviceId, d->client->tree().root(), 0);
+    if (!d || !ready(d)) return {};
+    return nodeJson(*this, deviceId, treeOf(d)->root(), 0);
+}
+
+// Devices
+
+const oscquery::RemoteTree *Explorer::treeOf(const Dev *d) const
+{
+    if (!d) return nullptr;
+    if (d->kind == Dev::Kind::Osc) return &d->local;
+    return d->client ? &d->client->tree() : nullptr;
+}
+
+bool Explorer::ready(const Dev *d) const
+{
+    if (!d) return false;
+    if (d->kind == Dev::Kind::Osc) return true;
+    return d->client && d->client->state() == oscquery::Client::State::Ready;
+}
+
+void Explorer::listenTo(Dev *d, const QString &path)
+{
+    if (d && d->client) d->client->listen(path);
+}
+
+quint64 Explorer::addOscDevice(const QString &name, const QString &host, quint16 port)
+{
+    const QString h = host.trimmed();
+    if (!port || h.isEmpty() || h.size() > 253) return 0;
+    for (const auto &d : m_devices)
+        if (d->kind == Dev::Kind::Osc && d->host == h && d->port == port) return d->id;
+    auto dev = std::make_unique<Dev>();
+    dev->id = m_nextDevice++;
+    dev->kind = Dev::Kind::Osc;
+    dev->host = h;
+    dev->port = port;
+    dev->name = name.trimmed().left(64);
+    if (dev->name.isEmpty()) dev->name = QStringLiteral("%1:%2").arg(h).arg(port);
+    dev->online = true;
+    rebuild(dev.get());
+    const quint64 id = dev->id;
+    Dev *raw = dev.get();
+    if (!raw->address.setAddress(h)) { // a name: found out, not waited for
+        raw->address.clear();
+        QHostInfo::lookupHost(h, this, [this, id](const QHostInfo &info) {
+            if (Dev *x = device(id); x && !info.addresses().isEmpty()) {
+                const auto &all = info.addresses();
+                const auto v4 = std::find_if(all.begin(), all.end(), [](const QHostAddress &a) { return a.protocol() == QAbstractSocket::IPv4Protocol; });
+                x->address = v4 != all.end() ? *v4 : all.first();
+            }
+        });
+    }
+    m_devices.push_back(std::move(dev));
+    emit devicesChanged();
+    emit nearbyChanged(); // "added" of the offers
+    return id;
+}
+
+bool Explorer::renameDevice(quint64 id, const QString &name)
+{
+    Dev *d = device(id);
+    const QString n = name.trimmed().left(64);
+    if (!d || n.isEmpty()) return false;
+    if (d->name == n) return true;
+    for (const auto &o : m_devices)
+        if (o->id != id && o->kind == d->kind && o->name == n) return false; // two devices of one name could not be told apart in a saved interface
+    const QString before = d->name + QLatin1Char(':');
+    d->name = n;
+    const auto relabel = [&](std::vector<Control> &list) {
+        for (Control &c : list)
+            if (c.boundScope == id && c.boundLabel.startsWith(before)) c.boundLabel = n + QLatin1Char(':') + c.boundLabel.mid(before.size());
+    };
+    relabel(m_controls);
+    for (View &v : m_views) relabel(v.controls);
+    changed(); // the controls' labels: "name:/path"
+    emit devicesChanged();
+    return true;
+}
+
+bool Explorer::referenced(quint64 id) const
+{
+    const auto uses = [&](const std::vector<Control> &list) {
+        return std::any_of(list.begin(), list.end(), [&](const Control &c) {
+            return c.boundScope == id || std::any_of(c.targets.begin(), c.targets.end(), [&](const controls::Target &t) { return t.scope == id; });
+        });
+    };
+    if (uses(m_controls)) return true;
+    return std::any_of(m_views.begin(), m_views.end(), [&](const View &v) { return uses(v.controls); });
+}
+
+bool Explorer::removeDevice(quint64 id)
+{
+    const auto it = std::find_if(m_devices.begin(), m_devices.end(), [&](const auto &d) { return d->id == id; });
+    if (it == m_devices.end() || referenced(id)) return false;
+    m_pruned.push_back(std::move(*it));
+    m_devices.erase(it);
+    emit devicesChanged();
+    emit nearbyChanged();
+    return true;
+}
+
+// A device that is gone and that no control shows is forgotten (a typed-in or announced one that is not answering, once its controls are deleted)
+void Explorer::pruneDevices()
+{
+    if (m_holdPrune) return;
+    bool any = false;
+    for (size_t i = m_devices.size(); i-- > 0;) {
+        Dev &d = *m_devices[i];
+        if (d.kind != Dev::Kind::Query || d.online) continue;
+        const auto state = d.client ? d.client->state() : oscquery::Client::State::Idle;
+        if (state == oscquery::Client::State::Connecting) continue;
+        if (referenced(d.id)) continue;
+        m_pruned.push_back(std::move(m_devices[i]));
+        m_devices.erase(m_devices.begin() + long(i));
+        any = true;
+    }
+    while (m_pruned.size() > 32) m_pruned.erase(m_pruned.begin());
+    if (any) emit devicesChanged();
+}
+
+// Points
+
+static bool validPath(const QString &p)
+{
+    if (!p.startsWith(QLatin1Char('/')) || p.size() > 256 || p.endsWith(QLatin1Char('/'))) return false;
+    for (const QString &seg : p.split(QLatin1Char('/')).mid(1))
+        if (seg.isEmpty()) return false;
+    for (const QChar c : p)
+        if (c.unicode() < 33 || c.unicode() == 127 || QStringLiteral("#*,?[]{}").contains(c)) return false; // spaces, controls and the pattern characters
+    return true;
+}
+
+void Explorer::rebuild(Dev *d)
+{
+    const oscquery::RemoteTree before = d->local; // the values sent stay
+    std::function<QJsonObject(const QString &, const QStringList &)> make = [&](const QString &path, const QStringList &points) {
+        QJsonObject contents;
+        QStringList names;
+        for (const QString &p : points) {
+            const QString rest = p.mid(path == QLatin1String("/") ? 1 : path.size() + 1);
+            const QString first = rest.section(QLatin1Char('/'), 0, 0);
+            if (!names.contains(first)) names << first;
+        }
+        for (const QString &n : std::as_const(names)) {
+            const QString child = (path == QLatin1String("/") ? QString() : path) + QLatin1Char('/') + n;
+            const Point *leaf = nullptr;
+            QStringList below;
+            for (const Point &pt : std::as_const(d->points)) {
+                if (pt.path == child) leaf = &pt;
+                else if (pt.path.startsWith(child + QLatin1Char('/'))) below << pt.path;
+            }
+            if (leaf) {
+                QJsonObject o{{"FULL_PATH", child}, {"TYPE", leaf->type}, {"ACCESS", leaf->type == QLatin1String("N") ? 2 : 3}};
+                if (leaf->type == QLatin1String("f") || leaf->type == QLatin1String("i")) o.insert("RANGE", QJsonArray{QJsonObject{{"MIN", leaf->min}, {"MAX", leaf->max}}});
+                if (const auto *old = before.find(child); old && !old->value.isEmpty()) o.insert("VALUE", old->value);
+                contents.insert(n, o);
+            } else {
+                contents.insert(n, make(child, below));
+            }
+        }
+        return QJsonObject{{"FULL_PATH", path}, {"ACCESS", 0}, {"CONTENTS", contents}};
+    };
+    QStringList all;
+    for (const Point &p : std::as_const(d->points)) all << p.path;
+    d->local.load(make(QStringLiteral("/"), all));
+}
+
+bool Explorer::addPoint(quint64 id, const Point &point)
+{
+    Dev *d = device(id);
+    if (!d || d->kind != Dev::Kind::Osc || !validPath(point.path) || d->points.size() >= 512) return false;
+    static const QStringList types = {"f", "i", "T", "N"};
+    if (!types.contains(point.type)) return false;
+    Point p = point;
+    if (!(p.max > p.min)) { p.min = 0; p.max = p.type == QLatin1String("i") ? 127 : 1; }
+    for (const Point &o : std::as_const(d->points))
+        if (o.path == p.path || o.path.startsWith(p.path + QLatin1Char('/')) || p.path.startsWith(o.path + QLatin1Char('/'))) return false;
+    d->points.append(p);
+    rebuild(d);
+    emit devicesChanged();
+    emit deviceTreeChanged(id);
+    return true;
+}
+
+bool Explorer::removePoint(quint64 id, const QString &path)
+{
+    Dev *d = device(id);
+    if (!d || d->kind != Dev::Kind::Osc) return false;
+    const auto it = std::find_if(d->points.begin(), d->points.end(), [&](const Point &p) { return p.path == path; });
+    if (it == d->points.end()) return false;
+    const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &c) { return c.boundScope == id && c.boundPaths().contains(path); }) ||
+                      std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &c) { return std::any_of(c.targets.begin(), c.targets.end(), [&](const controls::Target &t) { return t.scope == id && t.path == path; }); });
+    if (used) return false;
+    d->points.erase(it);
+    rebuild(d);
+    emit deviceTreeChanged(id);
+    return true;
+}
+
+// The message of a value for a point, as the OSCQuery client builds it
+bool Explorer::sendOsc(Dev *d, const QString &path, const QJsonArray &values)
+{
+    const auto *n = d->local.find(path);
+    if (!n || n->type.size() != 1 || d->address.isNull() || !d->port) return false;
+    osc::Message m;
+    m.address = path;
+    m.types = n->type;
+    const QJsonValue v = values.isEmpty() ? QJsonValue() : values[0];
+    const QChar tag = n->type[0];
+    if (tag == QLatin1Char('T')) {
+        const bool on = v.isBool() ? v.toBool() : v.toDouble() != 0;
+        m.types = on ? QStringLiteral("T") : QStringLiteral("F");
+        m.args << on;
+    } else if (tag == QLatin1Char('i')) {
+        m.args << int(std::lround(v.toDouble()));
+    } else if (tag == QLatin1Char('f')) {
+        m.args << v.toDouble();
+    } else if (tag != QLatin1Char('N')) {
+        return false;
+    }
+    if (m_udp.state() == QAbstractSocket::UnconnectedState) m_udp.bind(QHostAddress::AnyIPv4, 0);
+    if (m_udp.writeDatagram(osc::encode(m), d->address, d->port) < 0) return false;
+    if (tag != QLatin1Char('N')) d->local.setValue(path, QJsonArray{v});
+    return true;
 }

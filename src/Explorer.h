@@ -5,13 +5,17 @@
 #include <pxs/Client.h>
 #include <pxs/ControlList.h>
 #include <pxs/Discovery.h>
+#include <pxs/RemoteTree.h>
 #include <pxs/Server.h>
 
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMap>
 #include <QObject>
 #include <QStringList>
 #include <QTimer>
+#include <QUdpSocket>
 #include <memory>
 #include <vector>
 
@@ -19,12 +23,23 @@ class Explorer : public QObject, public pxs::controls::Backend, public pxs::cont
 {
     Q_OBJECT
 public:
+    // A plain OSC device has no namespace to read: the addresses it takes are declared by hand (a Point), and its values are sent over UDP
+    struct Point {
+        QString path;
+        QString type = QStringLiteral("f"); // OSC type tag: f (float), i (int), T (on/off), s (text), N (a trigger)
+        double min = 0, max = 1;            // f and i only
+    };
     struct Dev {
+        enum class Kind { Query, Osc };
         quint64 id = 0;
+        Kind kind = Kind::Query;
         QString name, host;
-        quint16 port = 0;
+        quint16 port = 0;    // OSCQuery: the HTTP port; OSC: the UDP port
         bool online = false; // announced on the network, or typed in and reachable
-        std::unique_ptr<pxs::oscquery::Client> client;
+        std::unique_ptr<pxs::oscquery::Client> client; // OSCQuery
+        QList<Point> points;                           // OSC
+        pxs::oscquery::RemoteTree local;               // OSC: what the points make, and the values sent
+        QHostAddress address;                          // OSC: where to send
     };
 
     explicit Explorer(QObject *parent = nullptr);
@@ -36,7 +51,19 @@ public:
     Dev *device(quint64 id) const;
     quint64 addDevice(const QString &name, const QString &host, quint16 port); // the same one again: the one known
     void openDevice(quint64 id); // connects; deviceReady() says when its tree is there
-    bool startSearch() { return m_discovery.start(); }
+    // The network: OSCQuery devices are listed as they appear; the plain OSC ones (_osc._udp) are offered to be added
+    bool startSearch();
+    void setSelfOscPort(quint16 port) { m_selfOscPort = port; }
+    quint64 addOscDevice(const QString &name, const QString &host, quint16 port); // the same host and port again: the one known
+    bool renameDevice(quint64 id, const QString &name);
+    // false: a control still shows it (or no such device)
+    bool removeDevice(quint64 id);
+    // The addresses of a plain OSC device: false when it is not one, the address is not valid, or (removePoint) a control uses it
+    bool addPoint(quint64 id, const Point &point);
+    bool removePoint(quint64 id, const QString &path);
+    // Offline devices nothing shows any more go (a plain OSC device is kept until it is removed)
+    void pruneDevices();
+    QJsonArray nearbyJson() const; // [{name, computer, address, port, added}]
 
     // A control that is a view of this parameter of this device (false: it has no such parameter, or not one a control can show)
     // `widget`: how the page draws it ("": the default one for its kind)
@@ -124,6 +151,7 @@ public:
     bool setJson(quint64 scope, const QString &path, const QJsonValue &v) override;
 
 signals:
+    void nearbyChanged();
     void prefsChanged();
     void devicesChanged();
     void deviceReady(quint64 id);
@@ -149,8 +177,21 @@ private:
     QString m_activeView;
     void listenAll(quint64 deviceId);
 
-    pxs::oscquery::Discovery m_discovery;
-    std::vector<std::unique_ptr<Dev>> m_devices;
+    // What a device offers, whatever it is: its namespace (null: none yet), whether it can be used now, and the listening that only OSCQuery needs
+    const pxs::oscquery::RemoteTree *treeOf(const Dev *d) const;
+    bool ready(const Dev *d) const;
+    void listenTo(Dev *d, const QString &path);
+    bool sendOsc(Dev *d, const QString &path, const QJsonArray &values);
+    void rebuild(Dev *d); // the namespace of a plain OSC device, from its points
+    bool referenced(quint64 id) const;
+    void nearbyFound(const pxs::oscquery::Device &d, bool gone);
+
+    pxs::oscquery::Discovery m_discovery, m_oscDiscovery;
+    QMap<QString, pxs::oscquery::Device> m_nearby; // plain OSC services of the network, by instance
+    std::vector<std::unique_ptr<Dev>> m_devices, m_pruned; // the ones that went stay a while: an undo can bring a control back
+    QUdpSocket m_udp;
+    quint16 m_selfOscPort = 0;
+    bool m_holdPrune = false;
     std::vector<pxs::controls::Control> m_controls;
     QJsonObject m_prefs;
     quint16 m_selfPort = 0;
