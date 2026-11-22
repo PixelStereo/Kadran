@@ -184,7 +184,7 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QStrin
     if (!c) return 0;
     ParamInfo info;
     QString wanted = widget; // the one asked for, or the one the preferences give to this type of parameter
-    if (wanted.isEmpty() && this->info(deviceId, path, &info)) {
+    if (wanted.isEmpty() && this->info(deviceId, path, &info) && (info.access & ParamInfo::Write)) { // what is only read stays a meter, whatever the preference for faders
         static const QHash<int, const char *> keys = {{int(ParamInfo::Type::Float), "float"}, {int(ParamInfo::Type::Int), "int"}, {int(ParamInfo::Type::Bool), "bool"},
                                                       {int(ParamInfo::Type::Choice), "choice"}, {int(ParamInfo::Type::Trigger), "trigger"}};
         wanted = m_prefs.value("widgets").toObject().value(QLatin1String(keys.value(int(info.type), ""))).toString();
