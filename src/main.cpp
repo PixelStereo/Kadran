@@ -139,6 +139,7 @@ int main(int argc, char **argv)
     OscDevice osc(&explorer, &server, QStringLiteral("Kadran (%1)").arg(QHostInfo::localHostName()));
     if (osc.start(quint16(settings.value("oscPort", 47801).toUInt()), quint16(settings.value("oscQueryPort", 47802).toUInt()))) {
         explorer.setSelfPort(osc.httpPort());
+        explorer.setSelfOscPort(osc.oscPort());
         settings.setValue("oscPort", osc.oscPort());
         settings.setValue("oscQueryPort", osc.httpPort());
     }

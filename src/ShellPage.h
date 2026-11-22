@@ -49,6 +49,12 @@ button.on { background:var(--acc); border-color:var(--acc); color:#06222a; font-
 .row.dev .st { width:7px; height:7px; border-radius:50%; margin-right:7px; background:var(--dim); flex:none; }
 .row.dev .st.ready { background:var(--ok); } .row.dev .st.failed { background:var(--bad); } .row.dev .st.connecting { background:#e5c14a; }
 .row.dead .name { color:var(--dim); }
+.row .act { margin-left:6px; padding:0 4px; color:var(--dim); cursor:pointer; flex:none; visibility:hidden; }
+.row:hover .act { visibility:visible; } .row .act:hover { color:var(--text); }
+.row.add .name { color:var(--acc); }
+#dlg select, #dlg .two { margin:8px 0 0; } #dlg .two { display:flex; gap:8px; } #dlg .two input { margin-bottom:12px; }
+#dlg .near { max-height:150px; overflow:auto; margin:4px 0 10px; border:1px solid var(--line); border-radius:7px; }
+#dlg .near div { padding:5px 8px; cursor:pointer; } #dlg .near div:hover { background:var(--panel2); } #dlg .near small { color:var(--dim); }
 .row.ro .name { color:var(--dim); }
 .note { color:var(--dim); padding:10px 14px; line-height:1.5; }
 #status { padding:6px 10px; border-top:1px solid var(--line); color:var(--dim); min-height:28px; font-size:12px; }
@@ -67,7 +73,7 @@ button.on { background:var(--acc); border-color:var(--acc); color:#06222a; font-
 inline constexpr char kBody[] = R"HTML(
 <div id="app">
   <div id="side">
-    <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device by its address">+ Device</button></div>
+    <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device: OSCQuery, or plain OSC by its address and UDP port">+ Device</button></div>
     <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="prefs" title="Preferences: the widgets and sizes of the new controls">Prefs</button><button id="about" title="About Kadran">About</button><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
     <div id="views"></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
@@ -86,7 +92,7 @@ inline constexpr char kScript[] = R"JS(
   const $ = s => document.querySelector(s);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
-  let ws = null, devices = [], trees = {}, openNodes = new Set(), selected = new Map(), filter = '', lastRow = null, statusTimer = 0;
+  let ws = null, devices = [], nearby = [], trees = {}, openNodes = new Set(), selected = new Map(), filter = '', lastRow = null, statusTimer = 0;
   const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
   const say = t => { $('#status').textContent = t || ''; clearTimeout(statusTimer); if (t) statusTimer = setTimeout(() => { $('#status').textContent = ''; }, 6000); };
 
@@ -96,7 +102,7 @@ inline constexpr char kScript[] = R"JS(
     ws.onclose = () => { $('#dot').classList.remove('ok'); setTimeout(connect, 1500); };
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
-      if (m.t === 'devices') { devices = m.list || []; render(); }
+      if (m.t === 'devices') { devices = m.list || []; nearby = m.nearby || []; render(); }
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
       else if (m.t === 'about') aboutHtml = m.html;
       else if (m.t === 'prefs') { prefs = m.prefs; prefOpts = m.options; }
@@ -117,7 +123,7 @@ inline constexpr char kScript[] = R"JS(
   const hasMatch = (n, f) => matches(n, f) || (n.c || []).some(c => hasMatch(c, f));
   function render() {
     const tree = $('#tree'), keep = tree.scrollTop; tree.textContent = '';
-    if (!devices.length) tree.appendChild(el('div', 'note', 'Looking for OSCQuery devices on the network… Add one by its address with + Device.'));
+    if (!devices.length) tree.appendChild(el('div', 'note', 'Looking for OSCQuery devices on the network… Add one by its address with + Device (a plain OSC device too).'));
     devices.forEach(d => {
       const row = el('div', 'row dev' + (d.online ? '' : ' dead'));
       const k = key(d.id, '');
@@ -125,10 +131,18 @@ inline constexpr char kScript[] = R"JS(
       row.appendChild(el('span', 'arrow', opened ? '▼' : '▶'));
       row.appendChild(el('span', 'st ' + d.state));
       row.appendChild(el('span', 'name', d.name));
-      row.title = d.address + (d.state === 'failed' ? ' (not answering)' : '');
+      const rn = el('span', 'act', '✎'); rn.title = 'Rename'; rn.onclick = e => { e.stopPropagation(); const v = prompt('Name of this device', d.name); if (v && v.trim()) send({ t: 'renameDevice', device: d.id, name: v.trim() }); };
+      const rm = el('span', 'act', '✕'); rm.title = 'Remove this device'; rm.onclick = e => { e.stopPropagation(); send({ t: 'removeDevice', device: d.id }); };
+      row.appendChild(rn); row.appendChild(rm);
+      row.title = (d.kind === 'osc' ? 'OSC (UDP) ' : 'OSCQuery ') + d.address + (d.state === 'failed' ? ' (not answering)' : '');
       row.onclick = () => { if (openNodes.has(k)) openNodes.delete(k); else { openNodes.add(k); send({ t: 'open', device: d.id }); } render(); };
       tree.appendChild(row);
-      if (opened) {
+      if (opened && d.kind === 'osc') {
+        const root = trees[d.id];
+        (root && root.c || []).forEach(n => nodeRows(tree, d.id, n, 1, true));
+        const add = el('div', 'row add'); add.style.paddingLeft = '24px'; add.appendChild(el('span', 'name', '+ Address…'));
+        add.title = 'Declare an address this device takes'; add.onclick = () => pointDialog(d); tree.appendChild(add);
+      } else if (opened) {
         const root = trees[d.id];
         if (!root) tree.appendChild(el('div', 'note', d.state === 'failed' ? 'Not answering. Trying again…' : 'Reading its namespace…'));
         else (root.c || []).forEach(n => nodeRows(tree, d.id, n, 1));
@@ -136,7 +150,7 @@ inline constexpr char kScript[] = R"JS(
     });
     tree.scrollTop = keep;
   }
-  function nodeRows(into, dev, n, depth) {
+  function nodeRows(into, dev, n, depth, mine) {
     if (filter && !hasMatch(n, filter)) return;
     const k = key(dev, n.p), leaf = !n.c, can = !!n.w;
     const open = filter ? true : openNodes.has(k);
@@ -145,6 +159,7 @@ inline constexpr char kScript[] = R"JS(
     row.appendChild(el('span', 'arrow', leaf ? '' : (open ? '▼' : '▶')));
     row.appendChild(el('span', 'name', n.n));
     if (n.t) row.appendChild(el('span', 'ty', n.t));
+    if (mine && leaf) { const x = el('span', 'act', '✕'); x.title = 'Remove this address'; x.onclick = e => { e.stopPropagation(); send({ t: 'removePoint', device: dev, path: n.p }); }; row.appendChild(x); }
     row.title = n.p + (n.d ? '\n' + n.d : '') + (leaf && !can ? '\n(more than one argument, or text: not a control yet)' : '');
     if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)
       row.draggable = true;
@@ -181,8 +196,11 @@ inline constexpr char kScript[] = R"JS(
       menuFor(e, Array.from(selected.values()), n, dev);
     };
     into.appendChild(row);
-    if (!leaf && open) n.c.forEach(c => nodeRows(into, dev, c, depth + 1));
+    if (!leaf && open) n.c.forEach(c => nodeRows(into, dev, c, depth + 1, mine));
   }
+)JS";
+
+inline constexpr char kScriptMid[] = R"JS(
   function rangeTo(dev, path) { // shift-click: the addresses between the last one picked and this one, as the tree shows them
     const rows = Array.from(document.querySelectorAll('#tree .row')), names = [];
     const all = []; const walk = (d, n) => { if (n.w) all.push({ device: d, path: n.p, w: n.w }); (n.c || []).forEach(c => walk(d, c)); };
@@ -252,13 +270,42 @@ inline constexpr char kScript[] = R"JS(
   });
   $('#open').onclick = () => $('#file').click();
   $('#file').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { send({ t: 'load', doc: JSON.parse(r.result) }); } catch (_) { say('Not an interface file'); } }; r.readAsText(f); e.target.value = ''; };
-  $('#add').onclick = () => {
-    const dlg = el('div'); dlg.id = 'dlg'; const form = el('form'); form.appendChild(el('div', '', 'Address of the OSCQuery server (host:port)'));
-    const input = el('input'); input.placeholder = '192.168.1.20:5678'; form.appendChild(input);
-    const acts = el('div', 'acts'), cancel = el('button', '', 'Cancel'), ok = el('button', 'on', 'Add'); cancel.type = 'button'; acts.appendChild(cancel); acts.appendChild(ok); form.appendChild(acts); dlg.appendChild(form); document.body.appendChild(dlg); input.focus();
+  // A dialog: its fields, and what Add does with them
+  function dialog(title, build, submit) {
+    const dlg = el('div'); dlg.id = 'dlg'; const form = el('form'); form.appendChild(el('div', '', title));
+    const done = build(form);
+    const acts = el('div', 'acts'), cancel = el('button', '', 'Cancel'), ok = el('button', 'on', 'Add'); cancel.type = 'button'; acts.appendChild(cancel); acts.appendChild(ok); form.appendChild(acts); dlg.appendChild(form); document.body.appendChild(dlg);
     cancel.onclick = () => dlg.remove(); dlg.onclick = e => { if (e.target === dlg) dlg.remove(); };
-    form.onsubmit = e => { e.preventDefault(); const v = input.value.trim(), i = v.lastIndexOf(':'); if (i > 0 && +v.slice(i + 1) > 0) send({ t: 'addDevice', host: v.slice(0, i), port: +v.slice(i + 1) }); else say('Give it as host:port'); dlg.remove(); };
-  };
+    form.onsubmit = e => { e.preventDefault(); if (submit(done) !== false) dlg.remove(); };
+    const first = form.querySelector('input'); if (first) first.focus();
+  }
+  const field = (form, label, placeholder, value) => { const i = el('input'); i.placeholder = placeholder || ''; i.value = value || ''; i.title = label; form.appendChild(i); return i; };
+  const hostPort = v => { v = v.trim(); const i = v.lastIndexOf(':'); return i > 0 && +v.slice(i + 1) > 0 && +v.slice(i + 1) < 65536 ? { host: v.slice(0, i), port: +v.slice(i + 1) } : null; };
+  $('#add').onclick = () => dialog('Add a device', form => {
+    const kind = el('select'); [['oscquery', 'OSCQuery (reads the namespace)'], ['osc', 'OSC (UDP: you give its addresses)']].forEach(o => { const op = el('option', '', o[1]); op.value = o[0]; kind.appendChild(op); });
+    kind.style.cssText = 'width:100%;padding:8px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:7px;font:inherit'; form.appendChild(kind);
+    const name = field(form, 'Name', 'Name (optional)'); const addr = field(form, 'Address', '192.168.1.20:5678');
+    const near = el('div', 'near'); form.insertBefore(near, form.querySelector('.acts'));
+    const sync = () => {
+      const osc = kind.value === 'osc'; name.style.display = osc ? '' : 'none'; addr.placeholder = osc ? 'host or IP : UDP port, e.g. 192.168.1.20:9000' : 'host:port of the OSCQuery server, e.g. 192.168.1.20:5678';
+      near.textContent = ''; near.style.display = osc && nearby.length ? '' : 'none';
+      nearby.forEach(n => { const r = el('div'); r.appendChild(document.createTextNode(n.name + ' ')); r.appendChild(el('small', '', n.computer + ' · ' + n.address + ':' + n.port + (n.added ? ' · added' : ''))); r.onclick = () => { name.value = n.name; addr.value = n.address + ':' + n.port; }; near.appendChild(r); });
+    };
+    kind.onchange = sync; sync(); return { kind, name, addr };
+  }, f => {
+    const hp = hostPort(f.addr.value); if (!hp) { say('Give it as host:port'); return false; }
+    send({ t: 'addDevice', kind: f.kind.value, name: f.name.value.trim(), host: hp.host, port: hp.port });
+  });
+  const pointDialog = d => dialog('An address ' + d.name + ' takes', form => {
+    const path = field(form, 'Address', '/layer/1/opacity');
+    const type = el('select'); [['f', 'Float'], ['i', 'Integer'], ['T', 'On / off'], ['N', 'Trigger (no value)']].forEach(o => { const op = el('option', '', o[1]); op.value = o[0]; type.appendChild(op); });
+    type.style.cssText = 'width:100%;padding:8px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:7px;font:inherit'; form.appendChild(type);
+    const two = el('div', 'two'); const min = field(two, 'Minimum', 'min 0'), max = field(two, 'Maximum', 'max 1'); form.appendChild(two);
+    type.onchange = () => { two.style.display = type.value === 'f' || type.value === 'i' ? '' : 'none'; }; return { path, type, min, max };
+  }, f => {
+    if (!f.path.value.trim().startsWith('/')) { say('An address starts with /'); return false; }
+    send({ t: 'addPoint', device: d.id, path: f.path.value.trim(), type: f.type.value, min: f.min.value === '' ? 0 : +f.min.value, max: f.max.value === '' ? 1 : +f.max.value });
+  });
   const toggleEdit = () => { try { const b = frame.contentDocument.getElementById('edit'); if (b && !b.hidden) b.click(); $('#edit').classList.toggle('on', b && b.classList.contains('on')); } catch (_) {} };
   $('#edit').onclick = toggleEdit;
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); toggleEdit(); } });
@@ -332,8 +379,8 @@ inline constexpr char kScript2[] = R"JS(
 })();
 )JS";
 
-// The script is in two parts (a literal stays under 16 KB)
-inline QByteArray script() { return QByteArray(kScript) + kScript2; }
+// The script is in three parts (a literal stays under 16 KB)
+inline QByteArray script() { return QByteArray(kScript) + kScriptMid + kScript2; }
 
 // The page as served, and the policy that lets only its script and style run, and frame the controls page
 inline QByteArray page() {

@@ -17,6 +17,7 @@ KadranServer::KadranServer(Explorer *explorer, QObject *parent) : pxs::controls:
     // What changes in the devices is told at the next tick
     connect(explorer, &Explorer::devicesChanged, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::deviceReady, this, [this] { m_dirty = true; });
+    connect(explorer, &Explorer::nearbyChanged, this, [this] { m_dirty = true; });
     connect(explorer, &Explorer::prefsChanged, this, [this] {
         applyPrefs();
         const QByteArray json = prefsMessage();
@@ -85,7 +86,7 @@ void KadranServer::sendAll(const QByteArray &json)
 
 void KadranServer::sendDevices(QTcpSocket *client)
 {
-    const QByteArray json = QJsonDocument(QJsonObject{{"t", "devices"}, {"list", m_ex->devicesJson()}}).toJson(QJsonDocument::Compact);
+    const QByteArray json = QJsonDocument(QJsonObject{{"t", "devices"}, {"list", m_ex->devicesJson()}, {"nearby", m_ex->nearbyJson()}}).toJson(QJsonDocument::Compact);
     if (client) sendText(client, json);
     else if (json != m_devices) {
         m_devices = json;
@@ -151,8 +152,29 @@ bool KadranServer::message(QTcpSocket *client, const QString &type, const QJsonO
         const quint16 port = quint16(o.value("port").toInt());
         const QString host = o.value("host").toString().trimmed();
         if (!port || host.isEmpty() || host.size() > 253) return true;
-        const quint64 id = m_ex->addDevice(QString(), host, port);
-        m_ex->openDevice(id);
+        if (o.value("kind").toString() == QLatin1String("osc")) { // plain OSC: the addresses it takes are declared, not read
+            m_ex->addOscDevice(o.value("name").toString(), host, port);
+        } else {
+            const quint64 id = m_ex->addDevice(QString(), host, port);
+            m_ex->openDevice(id);
+        }
+        m_dirty = true;
+    } else if (type == QLatin1String("renameDevice")) {
+        if (!m_ex->renameDevice(quint64(o.value("device").toDouble()), o.value("name").toString())) say(client, QStringLiteral("This name cannot be used"));
+        m_dirty = true;
+    } else if (type == QLatin1String("removeDevice")) {
+        if (!m_ex->removeDevice(quint64(o.value("device").toDouble()))) say(client, QStringLiteral("Controls still show this device: delete them first"));
+        m_dirty = true;
+    } else if (type == QLatin1String("addPoint")) {
+        Explorer::Point p;
+        p.path = o.value("path").toString().trimmed();
+        p.type = o.value("type").toString();
+        p.min = o.value("min").toDouble(0);
+        p.max = o.value("max").toDouble(1);
+        if (!m_ex->addPoint(quint64(o.value("device").toDouble()), p)) say(client, QStringLiteral("This address cannot be added (a path like /layer/1/opacity, not used yet)"));
+        m_dirty = true;
+    } else if (type == QLatin1String("removePoint")) {
+        if (!m_ex->removePoint(quint64(o.value("device").toDouble()), o.value("path").toString())) say(client, QStringLiteral("A control still uses this address"));
         m_dirty = true;
     } else if (type == QLatin1String("add")) {
         checkpoint();

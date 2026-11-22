@@ -5,7 +5,9 @@
 //   client -> {"t":"hello"}                                   this client is the front page: devices and trees are pushed to it, controls are not
 //   server -> {"t":"devices","list":[{"id","name","address","online","state"}]}
 //   server -> {"t":"tree","device":id,"root":{"c":[{"n","p","t","d","w":[widgets],"c":[..]}]}}
-//   client -> {"t":"open","device":id}   {"t":"addDevice","host":..,"port":..}
+//   client -> {"t":"open","device":id}   {"t":"addDevice","host":..,"port":..,"kind":"oscquery"|"osc","name":".."}
+//   client -> {"t":"renameDevice","device":id,"name":..} {"t":"removeDevice","device":id}
+//   client -> {"t":"addPoint","device":id,"path":"/a/b","type":"f|i|T|N","min":..,"max":..} {"t":"removePoint","device":id,"path":..}   (plain OSC devices)
 //   client -> {"t":"add","targets":[{"device","path"}],"widget":"","pad":true,"page":"<id>"}
 //   client -> {"t":"drop","data":"<json of targets>","page":"<id>","x":..,"y":..}            (from the controls page)
 //   client -> {"t":"save"}  server -> {"t":"file","name":..,"doc":{..}}      client -> {"t":"load","doc":{..}}

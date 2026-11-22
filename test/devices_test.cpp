@@ -1,0 +1,171 @@
+// The devices of the explorer: plain OSC ones (declared addresses, values sent over UDP, several ports of one host, renamed, saved) and the
+// OSCQuery ones that go when nothing shows them any more.
+#include "Explorer.h"
+
+#include <pxs/OscService.h>
+
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QUdpSocket>
+#include <cmath>
+#include <cstdio>
+
+static int failures = 0;
+#define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr, "FAILED %s:%d %s\n", __FILE__, __LINE__, #condition); ++failures; } } while (0)
+
+static void pump(const std::function<bool()> &until, int ms = 3000)
+{
+    QElapsedTimer t;
+    t.start();
+    while (!until() && t.elapsed() < ms) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+}
+
+// What arrives on a UDP port, decoded
+static bool receive(QUdpSocket &in, osc::Message *out)
+{
+    pump([&] { return in.hasPendingDatagrams(); });
+    if (!in.hasPendingDatagrams()) return false;
+    QByteArray data;
+    data.resize(int(in.pendingDatagramSize()));
+    in.readDatagram(data.data(), data.size());
+    std::vector<osc::Message> list;
+    if (!osc::decode(data, list) || list.size() != 1) return false;
+    *out = list[0];
+    return true;
+}
+
+static bool hasDevice(const Explorer &ex, quint64 id)
+{
+    for (const auto &d : ex.devices())
+        if (d->id == id) return true;
+    return false;
+}
+
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+
+    // --- a plain OSC device -------------------------------------------------------------------------------------------
+    QUdpSocket in, in2;
+    CHECK(in.bind(QHostAddress::LocalHost, 0));
+    CHECK(in2.bind(QHostAddress::LocalHost, 0));
+    Explorer ex;
+    const quint64 beamer = ex.addOscDevice("Beamer", "127.0.0.1", in.localPort());
+    CHECK(beamer != 0);
+    CHECK(ex.addOscDevice("Other name", "127.0.0.1", in.localPort()) == beamer); // the same host and port: the one known
+    const quint64 second = ex.addOscDevice("Beamer 2", "127.0.0.1", in2.localPort()); // another UDP port of the same host
+    CHECK(second != 0 && second != beamer);
+    CHECK(ex.addOscDevice("x", "", 9000) == 0 && ex.addOscDevice("x", "127.0.0.1", 0) == 0);
+    CHECK(ex.devices().size() == 2 && ex.devices()[0]->kind == Explorer::Dev::Kind::Osc);
+
+    CHECK(ex.addPoint(beamer, {"/layer/1/opacity", "f", 0, 1}));
+    CHECK(ex.addPoint(beamer, {"/layer/1/index", "i", 0, 9}));
+    CHECK(ex.addPoint(beamer, {"/on", "T", 0, 1}));
+    CHECK(ex.addPoint(beamer, {"/go", "N", 0, 1}));
+    CHECK(!ex.addPoint(beamer, {"/on", "T", 0, 1}));            // the same address
+    CHECK(!ex.addPoint(beamer, {"/layer/1", "f", 0, 1}));       // a node that holds others
+    CHECK(!ex.addPoint(beamer, {"/on/more", "f", 0, 1}));       // under a parameter
+    CHECK(!ex.addPoint(beamer, {"layer", "f", 0, 1}));          // no slash
+    CHECK(!ex.addPoint(beamer, {"/a b", "f", 0, 1}));           // a space
+    CHECK(!ex.addPoint(beamer, {"/a/*", "f", 0, 1}));           // a pattern
+    CHECK(!ex.addPoint(beamer, {"/a/", "f", 0, 1}));
+    CHECK(!ex.addPoint(beamer, {"/text", "s", 0, 1}));          // not offered
+    CHECK(!ex.addPoint(12345, {"/x", "f", 0, 1}));
+
+    // Its namespace is what the front page shows, and every point can be a control
+    const QJsonObject root = ex.treeJson(beamer);
+    CHECK(!root.isEmpty() && root.value("c").toArray().size() == 3); // layer, on, go
+    CHECK(!ex.widgetsFor(beamer, "/layer/1/opacity").isEmpty());
+    CHECK(ex.widgetsFor(beamer, "/go").first().first == "hold" || ex.widgetsFor(beamer, "/go").first().first == "tap");
+    CHECK(ex.devicesJson()[0].toObject().value("kind").toString() == "osc");
+
+    const quint64 fader = ex.addControl(beamer, "/layer/1/opacity");
+    CHECK(fader != 0);
+    CHECK(ex.setValue(fader, 0.5));
+    osc::Message m;
+    CHECK(receive(in, &m) && m.address == "/layer/1/opacity" && m.types == "f" && std::abs(m.args[0].toDouble() - 0.5) < 1e-6);
+    pump([&] { return ex.control(fader)->value == 0.5; }, 200);
+    CHECK(ex.control(fader)->value == 0.5); // it shows what was sent
+    CHECK(!in2.hasPendingDatagrams());       // the other port heard nothing
+
+    const quint64 toggle = ex.addControl(beamer, "/on");
+    CHECK(toggle != 0 && ex.setValue(toggle, 1));
+    CHECK(receive(in, &m) && m.address == "/on" && m.types == "T");
+    CHECK(ex.setValue(toggle, 0));
+    CHECK(receive(in, &m) && m.types == "F");
+    const quint64 go = ex.addControl(beamer, "/go");
+    CHECK(go != 0 && ex.setValue(go, 1));
+    CHECK(receive(in, &m) && m.address == "/go" && m.types == "N");
+
+    // A point or a device a control shows stays
+    CHECK(!ex.removePoint(beamer, "/layer/1/opacity"));
+    CHECK(!ex.removeDevice(beamer));
+    CHECK(ex.removePoint(second, "/nothing") == false);
+
+    // Renamed; two of one name are refused, and the controls' labels follow
+    CHECK(ex.renameDevice(beamer, "Stage beamer") && ex.device(beamer)->name == "Stage beamer");
+    CHECK(!ex.renameDevice(beamer, "   ") && !ex.renameDevice(second, "Stage beamer") && !ex.renameDevice(999, "x"));
+    CHECK(ex.control(fader)->boundLabel.startsWith("Stage beamer"));
+
+    // Saved with its addresses, and open again: the same device and the same control
+    const QJsonObject doc = ex.toJson();
+    Explorer back;
+    QString why;
+    CHECK(back.fromJson(doc, &why));
+    CHECK(back.devices().size() == 1 && back.devices()[0]->kind == Explorer::Dev::Kind::Osc && back.devices()[0]->points.size() == 4);
+    CHECK(back.devices()[0]->name == "Stage beamer" && back.devices()[0]->port == in.localPort());
+    CHECK(back.controls().size() == 3);
+    const auto restored = back.controls().front();
+    CHECK(back.setValue(restored.id, 0.75));
+    CHECK(receive(in, &m) && std::abs(m.args[0].toDouble() - 0.75) < 1e-6);
+    CHECK(back.fromJson(doc, &why) && back.devices().size() == 1); // again: not duplicated
+
+    // The controls gone, the device is kept (it is not announced by anything): until it is removed
+    CHECK(ex.remove(fader) && ex.remove(toggle) && ex.remove(go));
+    CHECK(hasDevice(ex, beamer) && hasDevice(ex, second));
+    CHECK(ex.removePoint(beamer, "/go") && ex.treeJson(beamer).value("c").toArray().size() == 2);
+    CHECK(ex.removeDevice(second) && !hasDevice(ex, second));
+    CHECK(ex.removeDevice(beamer) && ex.devices().empty());
+
+    // --- OSCQuery devices that are gone ------------------------------------------------------------------------------
+    pxs::core::tree::Tree tree;
+    double level = 0.25;
+    auto p = std::make_unique<pxs::core::tree::Parameter>("level", "Level", pxs::core::tree::Parameter::Type::Float);
+    p->range(0, 1).bind([&] { return pxs::core::Value(level); }, [&](const pxs::core::Value &v) { level = v.number().value_or(0.0); });
+    tree.add("/mix/level", std::move(p));
+    pxs::OscService service(&tree, "Device");
+    CHECK(service.start(0, 0, false));
+
+    Explorer q;
+    const quint64 dev = q.addDevice("Device", "127.0.0.1", service.httpPort());
+    bool ready = false;
+    QObject::connect(&q, &Explorer::deviceReady, [&](quint64) { ready = true; });
+    q.openDevice(dev);
+    pump([&] { return ready; });
+    CHECK(ready);
+    const quint64 shown = q.addControl(dev, "/mix/level");
+    CHECK(shown != 0);
+    const std::vector<pxs::controls::Control> withControl = q.controls();
+
+    q.device(dev)->online = false; // it said goodbye on the network
+    q.pruneDevices();
+    CHECK(hasDevice(q, dev));      // a control shows it: it stays
+    CHECK(q.remove(shown));        // nothing does now
+    CHECK(!hasDevice(q, dev));     // it goes
+    CHECK(q.restore(withControl)); // an undo: the control is back, so is its device
+    CHECK(hasDevice(q, dev) && q.control(shown) && q.control(shown)->boundScope == dev);
+
+    // A device that does not answer, shown by nothing, does not stay
+    Explorer lost;
+    const quint64 ghost = lost.addDevice("Ghost", "127.0.0.1", 1);
+    bool failed = false;
+    QObject::connect(&lost, &Explorer::deviceFailed, [&](quint64, const QString &) { failed = true; });
+    lost.openDevice(ghost);
+    pump([&] { return failed; }, 8000);
+    CHECK(failed && !hasDevice(lost, ghost));
+
+    if (failures) std::fprintf(stderr, "%d failure(s)\n", failures);
+    else std::printf("devices ok\n");
+    return failures ? 1 : 0;
+}
