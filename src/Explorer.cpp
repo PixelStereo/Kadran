@@ -925,7 +925,7 @@ int Explorer::addToMacro(quint64 id, const QList<Target> &targets)
 QString Explorer::addTargets(const QList<Target> &targets, const QString &widget, bool pad, quint64 group, const QString &macro)
 {
     if (targets.isEmpty()) return QString();
-    if (!macro.isEmpty()) return addMacro(targets, macro, group) ? QStringLiteral("Added a macro for %1 parameters").arg(targets.size()) : QStringLiteral("These cannot be sent to");
+    if (!macro.isEmpty()) return addMacro(targets, macro, group) ? QStringLiteral("Added a multi-target interaction for %1 parameters").arg(targets.size()) : QStringLiteral("These cannot be sent to");
     const auto numeric = [this](const Target &t) { // a number that can be set
         ParamInfo info;
         return this->info(t.device, t.path, &info) && info.isNumber() && (info.access & ParamInfo::Write);

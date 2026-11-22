@@ -41,9 +41,15 @@ Kadran is an OSCQuery device itself (announced as *Kadran (computer name)*; the 
 
 The multi-sliders, the ADSRs, the colors and the balls are not exposed yet.
 
-## Macros: one control, several parameters
+## Multi-target interactions: one control, several parameters
 
-Select two or more parameters in the tree, right-click, and pick *One control that sends to all of them*: a fader, a switch, a scene button (sends its values once, when pressed) or a hold button (high values when pressed, low ones when let go). Each parameter keeps its own range (its own to begin with), curve and, for a pad, axis; in edit mode the inspector lists them under *Sends to* (From, To, Curve; From above To inverts; the ✕ stops sending to one). Drag another address from the tree onto the macro's tile to send to it too. A macro keeps its own value: nothing is read back from the parameters.
+Select two or more parameters in the tree, right-click, and pick *One control that sends to all of them*: a fader, a switch, a scene button (sends its values once, when pressed) or a hold button (high values when pressed, low ones when let go). Each target keeps its own range (its own to begin with), curve and, for a pad, axis; in edit mode the inspector lists them under *Sends to* (From, To, Curve; From above To inverts; the ✕ stops sending to one). Drag another address from the tree onto the macro's tile to send to it too. A macro keeps its own value: nothing is read back from the parameters.
+
+When a tile sends to several targets, *Feedback from* in the inspector chooses which one gives the value the tile shows (taken back through its range and curve); *None* keeps the tile's own value.
+
+## Filters
+
+A slider or a switch can send its value through filters (smoothing, shape, timing, triggers: all the interaction filters of Pixel Stereo): in edit mode, *Filters* in the inspector, *+ Add a filter…*. They run in the order listed, on the value sent to the device; a smoothing goes on by itself after you let go.
 
 ## Build
 
