@@ -163,6 +163,7 @@ inline constexpr char kScript[] = R"JS(
     row.appendChild(el('span', 'arrow', leaf ? '' : (open ? '▼' : '▶')));
     row.appendChild(el('span', 'name', n.n));
     if (n.t) row.appendChild(el('span', 'ty', n.t));
+    if (mine && leaf && n.r) { const ed = el('span', 'act', '✎'); ed.title = 'Range of this address (the tiles keep their own)'; ed.onclick = e => { e.stopPropagation(); const v = prompt('Range of ' + n.p + ' (min max)', n.r[0] + ' ' + n.r[1]); if (!v) return; const q = v.trim().split(/[\s,;]+/).map(Number); if (q.length === 2 && q.every(isFinite)) send({ t: 'pointRange', device: dev, path: n.p, min: q[0], max: q[1] }); }; row.appendChild(ed); }
     if (mine && leaf) { const x = el('span', 'act', '✕'); x.title = 'Remove this address'; x.onclick = e => { e.stopPropagation(); send({ t: 'removePoint', device: dev, path: n.p }); }; row.appendChild(x); }
     row.title = n.p + (n.d ? '\n' + n.d : '') + (leaf && !can ? '\n(more than one argument, or text: not a control yet)' : '');
     if (!leaf) { // a node: dragged, it brings all it holds, in a group of the page (Alt: in a page of its own)

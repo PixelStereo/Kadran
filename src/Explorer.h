@@ -63,6 +63,7 @@ public:
     // The addresses of a plain OSC device: false when it is not one, the address is not valid, or (removePoint) a control uses it
     bool addPoint(quint64 id, const Point &point);
     bool removePoint(quint64 id, const QString &path);
+    bool setPointRange(quint64 id, const QString &path, double min, double max); // the address's: the tiles keep their own
     // Offline devices nothing shows any more go (a plain OSC device is kept until it is removed)
     void pruneDevices();
     QJsonArray nearbyJson() const; // [{name, computer, address, port, added}]

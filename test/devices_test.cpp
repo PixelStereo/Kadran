@@ -154,17 +154,22 @@ int main(int argc, char **argv)
         CHECK(ex.setValue(fader, 0.3) && receive(in, &m) && std::abs(m.args[0].toDouble() - 0.3) < 1e-6); // no filter: as before
     }
 
-    // The range of a plain OSC address is changed on its tile (the encoder's Min and Max)
+    // A tile has a range of its own; the address's is changed on the address
     {
         CHECK(ex.addPoint(beamer, {"/count", "i", 0, 1}));
         const quint64 enc = ex.addControl(beamer, "/count", "knob");
-        CHECK(enc != 0 && ex.control(enc)->max == 1);
+        const quint64 enc2 = ex.addControl(beamer, "/count", "knob");
+        CHECK(enc != 0 && enc2 != 0 && ex.control(enc)->max == 1);
         pxs::controls::Control c = *ex.control(enc);
         c.applyProps(QJsonObject{{"min", 0}, {"max", 127}});
         CHECK(ex.update(enc, c));
-        CHECK(ex.control(enc)->max == 127); // it takes
+        CHECK(ex.control(enc)->max == 127 && ex.control(enc2)->max == 1); // it takes, on this tile only
         CHECK(ex.setValue(enc, 100) && receive(in, &m) && m.types == "i" && m.args[0].toInt() == 100);
-        CHECK(ex.remove(enc) && ex.removePoint(beamer, "/count"));
+        CHECK(ex.setPointRange(beamer, "/count", 0, 10));
+        CHECK(ex.control(enc2)->max == 10 && ex.control(enc)->max == 127); // the address's range: the tiles that follow it
+        CHECK(ex.setValue(enc, 100) && receive(in, &m) && m.args[0].toInt() == 10); // and what is sent stays within what the address takes
+        CHECK(!ex.setPointRange(beamer, "/count", 5, 5) && !ex.setPointRange(beamer, "/nothing", 0, 1));
+        CHECK(ex.remove(enc) && ex.remove(enc2) && ex.removePoint(beamer, "/count"));
         while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
     }
 
