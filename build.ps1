@@ -108,7 +108,7 @@ if (-not (Test-Path "$qtDir\bin\qmake.exe") -or -not (Test-Path "$qtDir\lib\cmak
 if (Test-Path .git) {
     Step "Fetching the submodules"
     git submodule update --init --recursive; Native "git submodule update"
-} elseif (-not (Test-Path third_party\pxs\CMakeLists.txt)) {
+} elseif (-not (Test-Path third_party\pxs-qt\CMakeLists.txt)) {
     Fail "third_party\ is empty: clone the repository with git (git clone --recurse-submodules https://github.com/PixelStereo/Kadran.git)"
 }
 
