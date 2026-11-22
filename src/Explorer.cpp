@@ -184,7 +184,7 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QStrin
     if (!c) return 0;
     ParamInfo info;
     QString wanted = widget; // the one asked for, or the one the preferences give to this type of parameter
-    if (wanted.isEmpty() && this->info(deviceId, path, &info)) {
+    if (wanted.isEmpty() && this->info(deviceId, path, &info) && (info.access & ParamInfo::Write)) { // what is only read stays a meter, whatever the preference for faders
         static const QHash<int, const char *> keys = {{int(ParamInfo::Type::Float), "float"}, {int(ParamInfo::Type::Int), "int"}, {int(ParamInfo::Type::Bool), "bool"},
                                                       {int(ParamInfo::Type::Choice), "choice"}, {int(ParamInfo::Type::Trigger), "trigger"}};
         wanted = m_prefs.value("widgets").toObject().value(QLatin1String(keys.value(int(info.type), ""))).toString();
@@ -224,10 +224,9 @@ QList<QPair<QString, QString>> Explorer::widgetsFor(quint64 deviceId, const QStr
     // What a control only shows (a meter, a readout, a graph, a lamp) is there for what cannot be set, and for what can: it is seen as well
     const QList<QPair<QString, QString>> views = {{"meter", "Meter"}, {"hmeter", "Horizontal meter"}, {"readout", "Readout"}, {"graph", "Graph"}};
     QList<QPair<QString, QString>> out;
-    if (info.isNumber()) {
-        if (writable)
-            out = {{"vfader", "Vertical fader"}, {"fader", "Fader"}, {"knob", "Encoder"}, {"number", "Number"}, {"slim", "Slim fader"}, {"vslim", "Slim vertical fader"}};
-        return out + views;
+    if (info.isNumber()) { // a number that cannot be set is shown with a fader too: it moves with the value, and cannot be moved
+        out = {{"vfader", "Vertical fader"}, {"fader", "Fader"}, {"knob", "Encoder"}, {"number", "Number"}, {"slim", "Slim fader"}, {"vslim", "Slim vertical fader"}};
+        return writable ? out + views : views + out; // the default first: a meter for what is only read
     }
     if (info.type == ParamInfo::Type::Choice) return writable ? QList<QPair<QString, QString>>{{"buttons", "Buttons"}, {"menu", "Menu"}, {"readout", "Readout"}} : QList<QPair<QString, QString>>{{"readout", "Readout"}};
     if (info.type == ParamInfo::Type::Trigger) return writable ? QList<QPair<QString, QString>>{{"hold", "Hold button"}, {"tap", "Tap button"}} : QList<QPair<QString, QString>>{};

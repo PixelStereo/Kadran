@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QJsonArray>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -171,6 +172,8 @@ int main(int argc, char **argv)
         CHECK(!ex.addControl(dev, "/in/hit"));
         CHECK(!ex.control(ex.addControl(dev, "/mix/level"))->signal);
         CHECK(ex.widgetsFor(dev, "/mix/vu").first().first == "meter");
+        const auto vuWidgets = ex.widgetsFor(dev, "/mix/vu");
+        CHECK(std::any_of(vuWidgets.begin(), vuWidgets.end(), [](const auto &w) { return w.first == "vfader"; })); // a fader that only shows
         const quint64 view = ex.addControl(dev, "/mix/vu");
         CHECK(view && ex.control(view)->widget == "meter" && std::abs(ex.control(view)->value - 0.4) < 1e-6);
         CHECK(!ex.setValue(view, 0.9) || std::abs(vu - 0.4) < 1e-9); // nothing sets it
