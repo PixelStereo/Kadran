@@ -36,6 +36,14 @@ static bool receive(QUdpSocket &in, osc::Message *out)
     return true;
 }
 
+// The next message to an address (a datagram of an earlier step that came late is skipped)
+static bool receiveAt(QUdpSocket &in, osc::Message *out, const QString &address)
+{
+    for (int i = 0; i < 8; ++i)
+        if (receive(in, out) && out->address == address) return true;
+    return false;
+}
+
 static bool hasDevice(const Explorer &ex, quint64 id)
 {
     for (const auto &d : ex.devices())
@@ -218,7 +226,7 @@ int main(int argc, char **argv)
         CHECK(ex.retarget(tile, {beamer, "/layer/2/opacity"}).startsWith("Now talks"));
         const auto moved = ex.control(tile);
         CHECK(moved && moved->boundParam == "/layer/2/opacity" && moved->max == 5 && moved->id == tile);
-        CHECK(ex.setValue(tile, 2.5) && receive(in, &m) && m.address == "/layer/2/opacity" && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
+        CHECK(ex.setValue(tile, 2.5) && receiveAt(in, &m, "/layer/2/opacity") && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
         QString why;
         CHECK(ex.toMulti(tile, &why) && ex.control(tile)->macro() && ex.control(tile)->feedback == 0);
         CHECK(ex.addToMacro(tile, {{beamer, "/layer/1/opacity"}}) == 1);
