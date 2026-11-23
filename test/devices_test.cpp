@@ -36,6 +36,14 @@ static bool receive(QUdpSocket &in, osc::Message *out)
     return true;
 }
 
+// The next message to an address (a datagram of an earlier step that came late is skipped)
+static bool receiveAt(QUdpSocket &in, osc::Message *out, const QString &address)
+{
+    for (int i = 0; i < 8; ++i)
+        if (receive(in, out) && out->address == address) return true;
+    return false;
+}
+
 static bool hasDevice(const Explorer &ex, quint64 id)
 {
     for (const auto &d : ex.devices())
@@ -173,6 +181,24 @@ int main(int argc, char **argv)
         while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
     }
 
+    // The plain OSC services of the network that are OSCQuery applications as well (same name) are not offered as plain OSC
+    {
+        Explorer net;
+        pxs::oscquery::Device both, only;
+        both.name = "Studio app (mac)";
+        both.address = QHostAddress("192.168.1.20");
+        both.port = 9000;
+        only.name = "Synth";
+        only.address = QHostAddress("192.168.1.21");
+        only.port = 9001;
+        net.nearbyFound(both, false);
+        net.nearbyFound(only, false);
+        CHECK(net.nearbyJson().size() == 2);
+        net.addDevice("Studio app (mac)", "192.168.1.20", 5678); // it is known as an OSCQuery device
+        const QJsonArray offers = net.nearbyJson();
+        CHECK(offers.size() == 1 && offers[0].toObject().value("name").toString() == "Synth");
+    }
+
     // A macro that sends to two addresses: the one that gives the feedback is chosen
     {
         CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));
@@ -200,7 +226,7 @@ int main(int argc, char **argv)
         CHECK(ex.retarget(tile, {beamer, "/layer/2/opacity"}).startsWith("Now talks"));
         const auto moved = ex.control(tile);
         CHECK(moved && moved->boundParam == "/layer/2/opacity" && moved->max == 5 && moved->id == tile);
-        CHECK(ex.setValue(tile, 2.5) && receive(in, &m) && m.address == "/layer/2/opacity" && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
+        CHECK(ex.setValue(tile, 2.5) && receiveAt(in, &m, "/layer/2/opacity") && std::abs(m.args[0].toDouble() - 2.5) < 1e-6);
         QString why;
         CHECK(ex.toMulti(tile, &why) && ex.control(tile)->macro() && ex.control(tile)->feedback == 0);
         CHECK(ex.addToMacro(tile, {{beamer, "/layer/1/opacity"}}) == 1);

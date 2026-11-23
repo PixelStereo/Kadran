@@ -67,6 +67,7 @@ public:
     // Offline devices nothing shows any more go (a plain OSC device is kept until it is removed)
     void pruneDevices();
     QJsonArray nearbyJson() const; // [{name, computer, address, port, added}]
+    void nearbyFound(const pxs::oscquery::Device &d, bool gone); // a plain OSC service of the network appeared or went (the discovery's, and tests')
 
     // A control that is a view of this parameter of this device (false: it has no such parameter, or not one a control can show)
     // `widget`: how the page draws it ("": the default one for its kind)
@@ -192,7 +193,6 @@ private:
     bool sendOsc(Dev *d, const QString &path, const QJsonArray &values);
     void rebuild(Dev *d); // the namespace of a plain OSC device, from its points
     bool referenced(quint64 id) const;
-    void nearbyFound(const pxs::oscquery::Device &d, bool gone);
 
     pxs::oscquery::Discovery m_discovery, m_oscDiscovery;
     QMap<QString, pxs::oscquery::Device> m_nearby; // plain OSC services of the network, by instance
