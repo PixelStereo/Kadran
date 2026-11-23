@@ -173,6 +173,24 @@ int main(int argc, char **argv)
         while (in.hasPendingDatagrams()) in.readDatagram(nullptr, 0);
     }
 
+    // The plain OSC services of the network that are OSCQuery applications as well (same name) are not offered as plain OSC
+    {
+        Explorer net;
+        pxs::oscquery::Device both, only;
+        both.name = "Studio app (mac)";
+        both.address = QHostAddress("192.168.1.20");
+        both.port = 9000;
+        only.name = "Synth";
+        only.address = QHostAddress("192.168.1.21");
+        only.port = 9001;
+        net.nearbyFound(both, false);
+        net.nearbyFound(only, false);
+        CHECK(net.nearbyJson().size() == 2);
+        net.addDevice("Studio app (mac)", "192.168.1.20", 5678); // it is known as an OSCQuery device
+        const QJsonArray offers = net.nearbyJson();
+        CHECK(offers.size() == 1 && offers[0].toObject().value("name").toString() == "Synth");
+    }
+
     // A macro that sends to two addresses: the one that gives the feedback is chosen
     {
         CHECK(ex.addPoint(beamer, {"/gain", "f", 0, 10}));
