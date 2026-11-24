@@ -1,5 +1,7 @@
 #include "Explorer.h"
 
+#include <pxs/Convert.h>
+
 #include <QHash>
 #include <QJsonArray>
 #include <algorithm>
@@ -623,14 +625,14 @@ QStringList Explorer::networkUrls() const { return m_server->urls(); }
 
 // Backend
 
-// The reset addresses of what a control is a view of (a device that has them says so: NYXMAP_RESET)
+// Can what a control is a view of be reset: does it announce a DEFAULT_VALUE (a reset is writing it)
 void Explorer::fillResets(Control &c) const
 {
-    c.resets.clear();
-    const Dev *d = device(c.boundScope);
-    if (!d || !d->client) return;
-    for (const QString &p : c.boundPaths())
-        if (const auto *n = d->client->tree().find(p); n && !n->resetPath.isEmpty() && !c.resets.contains(n->resetPath)) c.resets << n->resetPath;
+    c.canReset = false;
+    for (const QString &p : c.boundPaths()) {
+        core::tree::ParamInfo pi;
+        if (info(c.boundScope, p, &pi) && !pi.defaultValue.isNil()) c.canReset = true;
+    }
 }
 
 std::vector<Control> Explorer::controls() const
@@ -792,10 +794,11 @@ bool Explorer::reset(quint64 id)
 {
     const Control *c = controls::find(m_controls, id);
     if (!c || !c->bound()) return false;
-    Control filled = *c;
-    fillResets(filled);
     bool any = false;
-    for (const QString &path : filled.resets) any |= setJson(c->boundScope, path, true);
+    for (const QString &path : c->boundPaths()) {
+        core::tree::ParamInfo pi;
+        if (info(c->boundScope, path, &pi) && !pi.defaultValue.isNil()) any |= setJson(c->boundScope, path, pxs::convert::toJson(pi.defaultValue));
+    }
     return any;
 }
 
@@ -950,7 +953,7 @@ static void collect(const Explorer &ex, quint64 device, const pxs::oscquery::Rem
     if (depth > 64) return;
     if (n.isLeaf() && !ex.widgetsFor(device, n.path).isEmpty()) out << n.path; // a parameter that has nodes under it (its reset)
     for (const auto &c : n.children)
-        if (c.second.path != n.resetPath) collect(ex, device, c.second, out, depth + 1);
+        collect(ex, device, c.second, out, depth + 1);
 }
 
 int Explorer::countNode(quint64 deviceId, const QString &path) const
@@ -1041,7 +1044,7 @@ static QJsonObject nodeJson(const Explorer &ex, quint64 device, const pxs::oscqu
     // A parameter's reset is not shown: the controls have a button for it
     QJsonArray children;
     for (const auto &c : n.children)
-        if (depth < 64 && c.second.path != n.resetPath) children.append(nodeJson(ex, device, c.second, depth + 1));
+        if (depth < 64) children.append(nodeJson(ex, device, c.second, depth + 1));
     if (!children.isEmpty()) o["c"] = children;
     return o;
 }
@@ -1329,7 +1332,7 @@ bool Explorer::toMulti(quint64 id, QString *why)
     c->boundScope = 0;
     c->boundParam.clear();
     c->boundLabel.clear();
-    c->resets.clear();
+    c->canReset = false;
     c->min = 0;
     c->max = 1;
     c->step = 0.01;
