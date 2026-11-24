@@ -48,6 +48,7 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this), m_oscD
         if (m_selfPort && d.port == m_selfPort && (d.address.isLoopback() || QNetworkInterface::allAddresses().contains(d.address))) return; // Kadran itself
         Dev *dev = device(addDevice(d.name, d.address.toString(), d.port));
         dev->online = true;
+        emit nearbyChanged(); // the same application is not offered as plain OSC
         if (dev->client && dev->client->state() == oscquery::Client::State::Failed) openDevice(dev->id); // it came back, maybe elsewhere
         emit devicesChanged();
     });
@@ -55,6 +56,7 @@ Explorer::Explorer(QObject *parent) : QObject(parent), m_discovery(this), m_oscD
         for (auto &dev : m_devices)
             if (dev->kind == Dev::Kind::Query && dev->name == d.name) dev->online = false;
         pruneDevices();
+        emit nearbyChanged();
         emit devicesChanged();
     });
     connect(&m_oscDiscovery, &oscquery::Discovery::deviceFound, this, [this](const oscquery::Device &d) { nearbyFound(d, false); });
@@ -84,7 +86,13 @@ void Explorer::nearbyFound(const oscquery::Device &d, bool gone)
 QJsonArray Explorer::nearbyJson() const
 {
     QJsonArray out;
+    // An OSCQuery application announces its UDP port too (_osc._udp), under the same name: it is listed as an OSCQuery device already, not offered as plain OSC
+    QStringList queryNames;
+    for (const oscquery::Device &q : m_discovery.devices()) queryNames << q.name.toLower();
+    for (const auto &x : m_devices)
+        if (x->kind == Dev::Kind::Query && !x->name.isEmpty()) queryNames << x->name.toLower();
     for (const oscquery::Device &d : m_nearby) {
+        if (queryNames.contains(d.name.toLower())) continue;
         QString computer = d.host;
         while (computer.endsWith(QLatin1Char('.'))) computer.chop(1);
         if (computer.endsWith(QLatin1String(".local"), Qt::CaseInsensitive)) computer.chop(6);
