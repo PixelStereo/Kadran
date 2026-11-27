@@ -135,7 +135,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    // Kadran is an OSCQuery device too: its pages, its views and the values of its widgets
+    // Kadran is an OSCQuery device too: its pages and the values of its widgets
     OscDevice osc(&explorer, &server, QStringLiteral("Kadran (%1)").arg(QHostInfo::localHostName()));
     if (osc.start(quint16(settings.value("oscPort", 47801).toUInt()), quint16(settings.value("oscQueryPort", 47802).toUInt()))) {
         explorer.setSelfPort(osc.httpPort());
@@ -153,7 +153,6 @@ int main(int argc, char **argv)
     autosave.setInterval(800);
     QObject::connect(&autosave, &QTimer::timeout, [&] { saveInterface(explorer); });
     QObject::connect(&explorer, &Explorer::controlsChanged, &autosave, qOverload<>(&QTimer::start));
-    QObject::connect(&explorer, &Explorer::viewsChanged, &autosave, qOverload<>(&QTimer::start));
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] { saveInterface(explorer); });
 
     // The window: where to open it

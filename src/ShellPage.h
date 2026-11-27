@@ -32,10 +32,6 @@ body:not(.nosb) #float { left:auto; right:8px; top:auto; bottom:8px; }
 button, .btn { font:inherit; color:var(--text); background:var(--panel2); border:1px solid var(--line); border-radius:7px; padding:5px 10px; cursor:pointer; }
 button:hover { border-color:var(--acc); }
 button.on { background:var(--acc); border-color:var(--acc); color:#06222a; font-weight:600; }
-#views { display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:6px 10px; border-bottom:1px solid var(--line); }
-#views button { font:inherit; font-size:12px; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:3px 10px; }
-#views button.on { background:var(--acc); border-color:var(--acc); color:#06222a; font-weight:600; }
-#views .none { color:var(--dim); font-size:12px; }
 #find { margin:8px 10px; padding:6px 9px; font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:7px; outline:none; }
 #find:focus { border-color:var(--acc); }
 #tree { flex:1; overflow:auto; padding:0 0 12px; -webkit-user-select:none; user-select:none; }
@@ -75,7 +71,6 @@ inline constexpr char kBody[] = R"HTML(
   <div id="side">
     <div class="bar"><span class="dot" id="dot"></span><h1>Kadran</h1><button id="add" title="Add a device: OSCQuery, or plain OSC by its address and UDP port">+ Device</button></div>
     <div class="bar"><button id="open">Open…</button><button id="save">Save</button><button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button><button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button><span style="flex:1"></span><button id="prefs" title="Preferences: the widgets and sizes of the new controls">Prefs</button><button id="about" title="About Kadran">About</button><button id="pages" title="Pages of the interface">Pages ▾</button><button id="edit" title="Edit the page (Cmd/Ctrl+E)">Edit</button></div>
-    <div id="views"></div>
     <input id="find" type="search" placeholder="Filter the addresses" autocomplete="off">
     <div id="tree"></div>
     <div id="status"></div>
@@ -110,7 +105,6 @@ inline constexpr char kScript[] = R"JS(
       else if (m.t === 'tree') { trees[m.device] = m.root || null; render(); }
       else if (m.t === 'about') aboutHtml = m.html;
       else if (m.t === 'prefs') { prefs = m.prefs; prefOpts = m.options; }
-      else if (m.t === 'views') { views = m.list || []; activeView = m.active || ''; renderViews(); }
       else if (m.t === 'say') say(m.text);
       else if (m.t === 'confirm') { if (confirm('Add ' + m.n + ' controls, as a ' + m.as + '?')) send({ t: 'addNode', device: m.device, path: m.path, as: m.as, page: m.page, confirmed: true }); }
       else if (m.t === 'file') download(m.name || 'Interface.kadran', JSON.stringify(m.doc, null, 2));
@@ -366,23 +360,6 @@ inline constexpr char kScript2[] = R"JS(
     close.onclick = () => dlg.remove(); acts.appendChild(reset); acts.appendChild(close); box.appendChild(acts); dlg.appendChild(box); document.body.appendChild(dlg);
     dlg.onclick = e => { if (e.target === dlg) dlg.remove(); };
   };
-  // The views: a whole layout kept under a name. Click one to show it; double-click to rename; the x deletes it
-  function renderViews() {
-    const box = $('#views'); box.textContent = '';
-    box.appendChild(el('span', 'none', 'Views'));
-    views.forEach(n => {
-      const b = el('button', n === activeView ? 'on' : '', n); b.title = 'Show this view. Double-click to rename';
-      b.onclick = () => send({ t: 'view', op: 'recall', name: n });
-      b.ondblclick = () => { const to = prompt('Rename the view', n); if (to && to !== n) send({ t: 'view', op: 'rename', name: n, to }); };
-      b.oncontextmenu = e => { e.preventDefault(); if (confirm('Delete the view "' + n + '"? The page stays as it is.')) send({ t: 'view', op: 'delete', name: n }); };
-      box.appendChild(b);
-    });
-    const add = el('button', '', '+ View'); add.title = 'Keep the page as it is under a new name (right-click a view to delete it)';
-    add.onclick = () => { const n = prompt('Name of the new view (a copy of this page)', 'View ' + (views.length + 1)); if (n !== null) send({ t: 'view', op: 'new', name: n }); };
-    box.appendChild(add);
-  }
-  let views = [], activeView = '';
-  renderViews();
   connect();
 })();
 )JS";

@@ -4,9 +4,6 @@
 //   /kadran/page                  the page shown (1, 2, 3…), read and written: the same page for every browser
 //   /kadran/pages/next, prev      the page after, the page before
 //   /kadran/pages/<name>          show that page (one per page, they come and go with the pages)
-//   /kadran/view                  the view shown (its name), read and written
-//   /kadran/views/next, prev      the view after, the view before
-//   /kadran/views/<name>          show that view (one per view)
 //   /kadran/controls/<page>/<key> the value of a widget: a slider (f), a switch (T), a choice (s, its names), a button (an action), an XY pad (ff).
 //                                 Written, it goes to the device the widget shows; read, it is what the widget shows
 // The multi-sliders, the ADSRs, the colors and the balls are not exposed yet.
@@ -41,7 +38,7 @@ private:
     std::vector<Page> pages() const;
     int pageIndex() const;
     void showPage(int index); // 1-based, wraps
-    void rebuild();           // the nodes that come and go: pages, views, widgets (only when what they say changed)
+    void rebuild();           // the nodes that come and go: pages and widgets (only when what they say changed)
     void pump();              // the values that changed, told to the listeners
     static QString slug(const QString &name);
     static QString unique(const QString &base, QSet<QString> &taken);
@@ -52,7 +49,7 @@ private:
     pxs::core::tree::Tree m_tree;
     pxs::OscService m_service;
     QTimer m_pump, m_rebuild;
-    QString m_pagesSeen, m_viewsSeen, m_controlsSeen;
+    QString m_pagesSeen, m_controlsSeen;
     QHash<QString, pxs::core::ValueList> m_told; // the last value told, by path
     QHash<QString, quint64> m_paths;     // widget path -> control id
 };

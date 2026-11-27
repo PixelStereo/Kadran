@@ -32,7 +32,7 @@ ArgRange oneOf(const QStringList &names)
 OscDevice::OscDevice(Explorer *explorer, KadranServer *server, const QString &name, QObject *parent)
     : QObject(parent), m_ex(explorer), m_server(server), m_service(&m_tree, name, this)
 {
-    // The page and the view shown: parameters that anything can read and write
+    // The current page can be read and written
     pxs::core::tree::Node &page = m_tree.add("/kadran/page");
     page.type = "i";
     page.access = 3;
@@ -43,20 +43,11 @@ OscDevice::OscDevice(Explorer *explorer, KadranServer *server, const QString &na
         showPage(whole(a[0]));
         return true;
     };
-    pxs::core::tree::Node &view = m_tree.add("/kadran/view");
-    view.type = "s";
-    view.access = 3;
-    view.description = "The view shown, by its name";
-    view.get = [this] { return ValueList{Value(u8(m_ex->activeView()))}; };
-    view.set = [this](const ValueList &a) { return !a.empty() && m_ex->recallView(pxs::convert::fromUtf8(a[0].text())); };
 
-    m_pump.setInterval(40);
-    connect(&m_pump, &QTimer::timeout, this, &OscDevice::pump);
     m_rebuild.setSingleShot(true);
     m_rebuild.setInterval(100); // what changes together is rebuilt once
     connect(&m_rebuild, &QTimer::timeout, this, &OscDevice::rebuild);
     connect(m_ex, &Explorer::controlsChanged, &m_rebuild, qOverload<>(&QTimer::start));
-    connect(m_ex, &Explorer::viewsChanged, &m_rebuild, qOverload<>(&QTimer::start));
     connect(m_server, &pxs::controls::Server::pageShown, this, [this] { pump(); });
     rebuild();
 }
@@ -154,29 +145,6 @@ void OscDevice::rebuild()
         }
         if (pxs::core::tree::Node *n = m_tree.find("/kadran/page"))
             n->range = {between(1, std::max<int>(1, int(list.size())))};
-    }
-
-    // The views
-    const QStringList views = m_ex->viewNames();
-    if (views.join(QLatin1Char('\n')) != m_viewsSeen) {
-        m_viewsSeen = views.join(QLatin1Char('\n'));
-        m_tree.remove("/kadran/views");
-        const auto step = [this](int by) {
-            const QStringList names = m_ex->viewNames();
-            if (names.isEmpty()) return false;
-            const int n = int(names.size()), at = names.indexOf(m_ex->activeView());
-            return m_ex->recallView(names[((at + by) % n + n) % n]);
-        };
-        m_tree.addAction("/kadran/views/next", "N", [step](const ValueList &) { return step(1); }, "The next view");
-        m_tree.addAction("/kadran/views/prev", "N", [step](const ValueList &) { return step(-1); }, "The previous view");
-        QSet<QString> taken{QStringLiteral("next"), QStringLiteral("prev")};
-        for (const QString &name : views)
-            m_tree.addAction("/kadran/views/" + u8(unique(slug(name), taken)), "N",
-                             [this, name](const ValueList &) { return m_ex->recallView(name); }, "Show the view " + u8(name));
-        if (pxs::core::tree::Node *n = m_tree.find("/kadran/view")) {
-            n->range.clear();
-            if (!views.isEmpty()) n->range = {oneOf(views)};
-        }
     }
 
     // The widgets
@@ -284,6 +252,5 @@ void OscDevice::pump()
         m_tree.changed(where);
     };
     tell(QStringLiteral("/kadran/page"));
-    tell(QStringLiteral("/kadran/view"));
     for (auto it = m_paths.cbegin(); it != m_paths.cend(); ++it) tell(it.key());
 }

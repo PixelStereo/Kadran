@@ -1,4 +1,4 @@
-// Kadran as an OSCQuery device: its pages, its views and the values of its widgets, read and written through the tree
+// Kadran as an OSCQuery device: its pages and the values of its widgets, read and written through the tree
 #include "KadranServer.h"
 #include "OscDevice.h"
 
@@ -76,18 +76,6 @@ int main(int argc, char **argv)
     CHECK(server.currentPage() == second);
     write(dev, "/kadran/pages/live", "N", {});
     CHECK(server.currentPage() == live && int(dev.tree().find("/kadran/page")->get().front().number().value_or(0.0)) == 1);
-
-    // The views
-    ex.newView("Front");
-    ex.newView("Back");
-    pump([&] { return dev.tree().find("/kadran/views/back") != nullptr; });
-    CHECK(dev.tree().find("/kadran/views/front") && dev.tree().find("/kadran/views/back"));
-    write(dev, "/kadran/views/front", "N", {});
-    CHECK(ex.activeView() == "Front");
-    write(dev, "/kadran/views/next", "N", {});
-    CHECK(ex.activeView() == "Back");
-    write(dev, "/kadran/view", "s", {"Front"});
-    CHECK(ex.activeView() == "Front" && dev.tree().find("/kadran/view")->get().front().text() == "Front");
 
     // A widget removed, its node goes
     ex.remove(id);

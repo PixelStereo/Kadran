@@ -113,14 +113,6 @@ public:
     QJsonObject toJson() const;
     bool fromJson(const QJsonObject &o, QString *error = nullptr); // replaces the page; its devices are opened
     void clearControls();
-    // The views: a whole layout (its pages and tiles) kept under a name. The layout on the page is the active view: what is changed on the
-    // page is changed in it, and a view recalled replaces the page. A new view is a copy of the page as it is
-    QStringList viewNames() const;
-    QString activeView() const { return m_activeView; }
-    QString newView(const QString &name = QString()); // returns the name given (made unique)
-    bool recallView(const QString &name);
-    bool deleteView(const QString &name);
-    bool renameView(const QString &name, const QString &to);
     // The pages (the top-level groups): one more, one removed with what it holds, one emptied (page 0: what is on no page), all of it emptied.
     // The count is how many controls went
     quint64 addPage(const QString &name = QString());
@@ -167,8 +159,6 @@ signals:
     void deviceTreeChanged(quint64 id);
     void deviceFailed(quint64 id, const QString &reason);
     void controlsChanged();
-    void viewsChanged();
-    void viewRecalled(); // the page was replaced: the clients are shown its first page
 
 private:
     void fillResets(pxs::controls::Control &c) const;
@@ -176,14 +166,7 @@ private:
     void retry();
     QTimer m_retry;
     void changed();
-    QJsonObject interfaceJson(const std::vector<pxs::controls::Control> &list) const;
     bool parseInterface(const QJsonObject &o, std::vector<pxs::controls::Control> *out, QList<quint64> *devices, QString *error);
-    struct View {
-        QString name;
-        std::vector<pxs::controls::Control> controls;
-    };
-    std::vector<View> m_views;
-    QString m_activeView;
     void listenAll(quint64 deviceId);
 
     // What a device offers, whatever it is: its namespace (null: none yet), whether it can be used now, and the listening that only OSCQuery needs
