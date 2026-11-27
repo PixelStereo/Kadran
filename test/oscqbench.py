@@ -66,7 +66,8 @@ class Handler(BaseHTTPRequestHandler):
             if node is None:
                 self.send_error(404)
                 return
-            if url.query and url.query not in node:
+            # The meter's initial value is in the tree. Its updates come only from LISTEN.
+            if url.query == "VALUE" and url.path == "/meter" or (url.query and url.query not in node):
                 self.send_response(204)
                 self.end_headers()
                 return
@@ -123,7 +124,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/added":
                 self.server.nodes.pop("old", None)
         if path == "/meter":
-            # The HTTP value stays at 0.25. Only the binary WebSocket event carries 0.75.
+            # Only the binary WebSocket event carries 0.75.
             self.frame(2, osc_packet("/meter", "f", struct.pack(">f", 0.75)))
         elif path == "/color":
             self.frame(1, b'{"COMMAND":"PATH_ADDED","DATA":"/added"}')

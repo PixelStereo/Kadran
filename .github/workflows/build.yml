@@ -38,11 +38,13 @@ jobs:
           version: ${{ matrix.qt }}
           cache: true
           modules: qtwebsockets
-      - run: git submodule foreach --recursive "git describe --exact-match --tags HEAD"
+      - name: Verify submodule release tags
+        shell: bash
+        run: git submodule foreach --recursive 'git tag --points-at HEAD | grep -Ex "v?[0-9]+[.][0-9]+[.][0-9]+"'
       - uses: actions/checkout@v4
         with:
           repository: PixelStereo/pxs-core
-          ref: refs/tags/compat/oscquery-momentary-actions
+          ref: refs/tags/v0.17.0
           path: oscqbench-vectors
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_OSCQBENCH_VECTORS:FILEPATH="${{ github.workspace }}/oscqbench-vectors/test/golden/vectors.tsv"
       - run: cmake --build build --config Release --parallel 3

@@ -83,7 +83,7 @@ read-only impulse, RGBA discovery and exact UDP bytes, binary WebSocket updates
 after `LISTEN`, and refresh after `PATH_ADDED` and `PATH_REMOVED`.
 
 The test needs Qt WebSockets, Python 3.8 or newer and the golden vectors from the
-pxs-core tag `compat/oscquery-momentary-actions`.
+pxs-core tag `v0.17.0`.
 
 ```sh
 cmake -S . -B build -DKADRAN_OSCQBENCH_VECTORS=/path/to/pxs-core/test/golden/vectors.tsv
