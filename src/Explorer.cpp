@@ -758,7 +758,7 @@ bool Explorer::setJson(quint64 scope, const QString &path, const QJsonValue &v)
     if (d && d->kind == Dev::Kind::Osc) return sendOsc(d, path, QJsonArray{v});
     if (!d || !d->client) return false;
     const oscquery::RemoteNode *n = d->client->tree().find(path);
-    if (n && n->type == QLatin1String("N")) return d->client->write(path, {});
+    if (n && n->isMomentaryAction()) return d->client->write(path, {});
     return d->client->write(path, QJsonArray{v});
 }
 
