@@ -74,3 +74,19 @@ open build/Kadran*.app        # macOS; elsewhere run the executable
 ## Licence
 
 GNU Affero General Public License v3.0 (see `LICENSE`).
+
+### OSCQbench compatibility test
+
+The OSCQbench test starts an independent Python OSCQuery fixture and drives
+Kadran's Explorer. It checks action controls for `N` and `I`, rejection of a
+read-only impulse, RGBA discovery and exact UDP bytes, binary WebSocket updates
+after `LISTEN`, and refresh after `PATH_ADDED` and `PATH_REMOVED`.
+
+The test needs Qt WebSockets, Python 3.8 or newer and the golden vectors from the
+pxs-core tag `compat/oscquery-momentary-actions`.
+
+```sh
+cmake -S . -B build -DKADRAN_OSCQBENCH_VECTORS=/path/to/pxs-core/test/golden/vectors.tsv
+cmake --build build --config Release --target kadran_oscqbench_client
+ctest --test-dir build -C Release -R '^oscqbench$' --output-on-failure
+```

@@ -37,7 +37,14 @@ jobs:
         with:
           version: ${{ matrix.qt }}
           cache: true
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          modules: qtwebsockets
+      - run: git submodule foreach --recursive "git describe --exact-match --tags HEAD"
+      - uses: actions/checkout@v4
+        with:
+          repository: PixelStereo/pxs-core
+          ref: refs/tags/compat/oscquery-momentary-actions
+          path: oscqbench-vectors
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKADRAN_OSCQBENCH_VECTORS:FILEPATH="${{ github.workspace }}/oscqbench-vectors/test/golden/vectors.tsv"
       - run: cmake --build build --config Release --parallel 3
       - run: ctest --test-dir build -C Release --output-on-failure
         env:

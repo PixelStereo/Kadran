@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(KADRAN_TESTS "Build the tests" ON)
+set(KADRAN_OSCQBENCH_VECTORS "" CACHE FILEPATH "pxs-core golden vectors for the OSCQbench integration test")
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Network)
 
@@ -62,6 +63,14 @@ if(KADRAN_TESTS)
     add_executable(kadran_osc_test test/osc_device_test.cpp)
     target_link_libraries(kadran_osc_test PRIVATE kadran_core)
     add_test(NAME osc_device COMMAND kadran_osc_test)
+    if(KADRAN_OSCQBENCH_VECTORS)
+        find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+        find_package(Qt6 6.4 REQUIRED COMPONENTS WebSockets)
+        add_executable(kadran_oscqbench_client test/oscqbench_client.cpp)
+        target_link_libraries(kadran_oscqbench_client PRIVATE kadran_core)
+        add_test(NAME oscqbench COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test/oscqbench.py"
+            $<TARGET_FILE:kadran_oscqbench_client> "${KADRAN_OSCQBENCH_VECTORS}")
+    endif()
     # A device to try the application on
     add_executable(kadran_fake_device test/fake_device.cpp)
     target_link_libraries(kadran_fake_device PRIVATE pxs::oscquery pxs::tree Qt6::Core)
